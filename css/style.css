@@ -1,0 +1,21 @@
+/* style.css 初始化，清除浏览器默认内外边距 */
+* {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: rgb(244, 247, 251);
+}
+
+.wrapper {
+    /* 使用 flex 取代传统 inline-block ，详见 https://juejin.cn/post/7566091125607923763 */
+    display: flex;
+}
+
+/* 设置导航盒子边框 */
+#nav {
+    width: 100%;
+    height: 64px;
+    background-color: rgb(254, 254, 255);
+}
