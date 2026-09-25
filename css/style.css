@@ -32,6 +32,12 @@ body {
     display: flex;
     
 }
+.wrapper nav {
+    display: flex;
+    gap: 4px;
+    /* 父容器开启 display: flex, `margin‑left: auto` 的含义：左边吃掉全部剩余空间，把自己挤向右边 */
+    margin-left: auto;
+}
 .wrapper button {
     color: #475569;
     font-weight: 500;
