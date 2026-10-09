@@ -2,10 +2,16 @@
 * {
     margin: 0;
     padding: 0;
+    /* 让 max-width / width 把 padding、border 也算进去，尺寸更好推算 */
+    box-sizing: border-box;
 }
 
 body {
     background-color: rgb(244, 247, 251);
+}
+
+button {
+    cursor: pointer;
 }
 
 /* 设置导航盒子边框 */
@@ -19,6 +25,7 @@ body {
     display: flex;
     max-width: 1240px;
     margin: 0 auto;
+    padding: 0 24px;
     align-items: center;
     height: 62px;
     
@@ -58,6 +65,50 @@ body {
     letter-spacing: .5px;
 }
 
-button {
+.nav button {
     padding: 8px 16px;
+}
+
+.container {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 28px 24px 60px;
+}
+
+.quick-grid {
+    display: grid;
+    /* 实现网格排列自适应 https://zhuanlan.zhihu.com/p/1930718137524912365*/
+    /* 核心：每列最小 240px，剩余空间均分；能塞几列就塞几列 —— 无需任何媒体查询 */
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+}
+.quick-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 14px;
+    color: #1e293b;
+    transition: all .16s;
+    text-align: left;
+}
+.quick-btn .icon {
+    font-size: 20px;
+    line-height: 1;
+}
+.quick-btn:hover {
+    border-color: #2563eb;
+    background: #eff6ff;
+    color: #2563eb;
+    transform: translateY(-1px);
+}
+/* 选中态：对应截图里那个蓝框卡片 */
+.quick-btn.is-active {
+    border-color: #2563eb;
+    background: #eff6ff;
+    color: #2563eb;
 }
