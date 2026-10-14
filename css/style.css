@@ -1,114 +1,209 @@
-/* style.css 初始化，清除浏览器默认内外边距 */
-* {
-    margin: 0;
-    padding: 0;
-    /* 让 max-width / width 把 padding、border 也算进去，尺寸更好推算 */
-    box-sizing: border-box;
-}
+/* ============================================================
+ * 样式表 —— 尽量朴素：只用边框和留白，不用渐变、阴影、动画
+ * ============================================================ */
+
+* { box-sizing: border-box; }
 
 body {
-    background-color: rgb(244, 247, 251);
+  margin: 0;
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #222;
+  background: #f5f6f8;
 }
 
-button {
-    cursor: pointer;
+h2 { font-size: 20px; margin: 0 0 4px; }
+h3 { font-size: 15px; margin: 0 0 10px; }
+p  { margin: 6px 0; }
+
+/* 统一的页面宽度 */
+.wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 16px;
 }
 
-/* 设置导航盒子边框 */
+/* ---------- 顶栏 ---------- */
 .topbar {
-    background-color: rgb(254, 254, 255);
-    border-bottom: 1px solid rgb(226, 232, 240);
+  background: #fff;
+  border-bottom: 1px solid #dcdfe6;
+}
+.topbar .wrap {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 56px;
+}
+.logo {
+  font-size: 16px;
+  font-weight: bold;
+  color: #2563eb;
+  cursor: pointer;
+}
+.nav { display: flex; gap: 16px; }
+.nav a {
+  color: #555;
+  cursor: pointer;
+  padding: 4px 0;
+  border-bottom: 2px solid transparent;
+}
+.nav a.on {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+}
+.login-info { margin-left: auto; color: #666; font-size: 13px; }
+
+.main { padding-top: 24px; padding-bottom: 60px; }
+
+/* ---------- 小字提示 ---------- */
+.tip { color: #888; font-size: 13px; }
+
+/* ---------- 卡片 ---------- */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+.card {
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 14px 16px;
+}
+.card[onclick] { cursor: pointer; }
+.card[onclick]:hover { border-color: #2563eb; }
+.card.disabled { color: #aaa; background: #fafafa; }
+
+.card-title {
+  font-size: 15px;
+  font-weight: bold;
+  margin-bottom: 6px;
 }
 
-.wrapper {
-    /* 使用 flex 取代传统 inline-block ，详见 https://juejin.cn/post/7566091125607923763 */
-    display: flex;
-    max-width: 1240px;
-    margin: 0 auto;
-    padding: 0 24px;
-    align-items: center;
-    height: 62px;
-    
+/* ---------- 小标签 ---------- */
+.tag {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: normal;
+  color: #666;
+  background: #f0f2f5;
+  border-radius: 3px;
+  padding: 1px 6px;
+  margin-left: 4px;
 }
-.wrapper nav {
-    display: flex;
-    gap: 4px;
-    /* 父容器开启 display: flex, `margin‑left: auto` 的含义：左边吃掉全部剩余空间，把自己挤向右边 */
-    margin-left: auto;
+.tag.green { color: #0a7a3d; background: #e6f5ec; }
+
+/* ---------- 日期按钮那一排 ---------- */
+.dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
 }
-.wrapper button {
-    color: #475569;
-    font-weight: 500;
-    font-size: 14px;
-    border: none;
-    background-color: rgb(254, 254, 255);
-    
+.date {
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
 }
-.wrapper button:hover {
-    background-color: rgb(248, 250, 252);
+.date span { display: block; color: #888; font-size: 12px; }
+.date.on { border-color: #2563eb; color: #2563eb; }
+.date.on span { color: #2563eb; }
+.date.off { color: #bbb; background: #fafafa; cursor: not-allowed; }
+.date.off span { color: #ccc; }
+
+/* ---------- 按钮 ---------- */
+.btn {
+  font-family: inherit;
+  font-size: 14px;
+  background: #fff;
+  border: 1px solid #c4c9d0;
+  border-radius: 4px;
+  padding: 6px 16px;
+  cursor: pointer;
 }
-.wrapper button:active {
-    color: rgb(37, 99, 235);
-    font-weight: bold;
-    background-color: rgb(239, 246, 255);
+.btn:hover { border-color: #2563eb; color: #2563eb; }
+.btn.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.btn.primary:hover { background: #1d4fd7; color: #fff; }
+.btn.on { border-color: #2563eb; color: #2563eb; }
+.btn.small { padding: 2px 10px; font-size: 13px; }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0;
 }
 
-
-.brand {
-    display: flex;
+/* ---------- 确认页的两栏 ---------- */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 14px 0;
 }
-.brand small {
-    display: block;
-    font-size: 11px;
-    font-weight: 400;
-    color: #94a3b8;
-    letter-spacing: .5px;
-}
-
-.nav button {
-    padding: 8px 16px;
+@media (max-width: 700px) {
+  .two-col { grid-template-columns: 1fr; }
 }
 
-.container {
-    max-width: 1240px;
-    margin: 0 auto;
-    padding: 28px 24px 60px;
+.box {
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 16px;
 }
+.box.narrow { max-width: 420px; }
+.box p { display: flex; align-items: center; gap: 8px; }
+.box label { width: 80px; flex-shrink: 0; color: #555; }
 
-.quick-grid {
-    display: grid;
-    /* 实现网格排列自适应 https://zhuanlan.zhihu.com/p/1930718137524912365*/
-    /* 核心：每列最小 240px，剩余空间均分；能塞几列就塞几列 —— 无需任何媒体查询 */
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 12px;
+/* ---------- 表单控件 ---------- */
+input, select {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 5px 8px;
+  border: 1px solid #c4c9d0;
+  border-radius: 4px;
+  background: #fff;
 }
-.quick-btn {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 18px;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    font-weight: 600;
-    font-size: 14px;
-    color: #1e293b;
-    transition: all .16s;
-    text-align: left;
+input:focus, select:focus { outline: none; border-color: #2563eb; }
+input[type="number"] { width: 64px; text-align: center; }
+.box input[type="text"], .box input[type="password"] { flex: 1; min-width: 0; }
+
+/* ---------- 筛选条 ---------- */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0;
 }
-.quick-btn .icon {
-    font-size: 20px;
-    line-height: 1;
+.filters input[type="text"] { min-width: 200px; }
+
+/* ---------- 表格 ---------- */
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid #dcdfe6;
 }
-.quick-btn:hover {
-    border-color: #2563eb;
-    background: #eff6ff;
-    color: #2563eb;
-    transform: translateY(-1px);
+table.data th, table.data td {
+  border-bottom: 1px solid #e6e8eb;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 13px;
+  vertical-align: top;
 }
-/* 选中态：对应截图里那个蓝框卡片 */
-.quick-btn.is-active {
-    border-color: #2563eb;
-    background: #eff6ff;
-    color: #2563eb;
-}
+table.data th { background: #f0f2f5; font-weight: bold; }
+table.data tr:last-child td { border-bottom: none; }

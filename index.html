@@ -1,68 +1,176 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="./css/style.css">
-    <title>Hospital Management System</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>智慧医院预约挂号系统</title>
+<link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-    <div class="topbar">
-        <!-- wrapper 这个盒子用于 flex 父盒子，以取代 inline-block -->
-        <div class="wrapper">
-            <div class="brand">
-                <div>医院挂号管理系统
-                    <small>Hospital Management System</small>
-                </div>
-            </div>
-            <nav class="nav">
-                <button id="index">首页</button>
-                <button id="appointment">预约挂号</button>
-                <button id="my_appointments">我的挂号</button>
-            </nav>
 
-        </div>
+<!-- ==================== 顶栏 ==================== -->
+<div class="topbar">
+  <div class="wrap">
+    <span class="logo" onclick="goHome()">🏥 智慧医院挂号平台</span>
+    <span class="nav">
+      <a id="navHome" onclick="goHome()">首页</a>
+      <a id="navMine" onclick="showPage('mine')">我的挂号</a>
+      <a id="navAdmin" onclick="goAdmin()">管理后台</a>
+    </span>
+    <span id="loginInfo" class="login-info"></span>
+  </div>
+</div>
+
+<div class="wrap main">
+
+  <!-- ==================== 首页：预约挂号向导 ==================== -->
+  <div id="page-home">
+    <h2 id="homeTitle">选择就诊科室</h2>
+    <p class="tip" id="homeTip"></p>
+
+    <!-- 第 1 步：选科室 -->
+    <div id="step1">
+      <div id="deptList" class="cards"></div>
     </div>
 
-    <main class="container">
-        <!-- 列数由 CSS 的 auto-fill + minmax 自动决定，这里不用管 -->
-        <div class="quick-grid">
-            <button class="quick-btn">
-                <span class="icon">🫀</span>
-                <span class="label">内科</span>
-            </button>
-            <button class="quick-btn">
-                <span class="icon">💊</span>
-                <span class="label">外科</span>
-            </button>
-            <button class="quick-btn">
-                <span class="icon">🧒</span>
-                <span class="label">儿科</span>
-            </button>
-            <button class="quick-btn">
-                <span class="icon">🦴</span>
-                <span class="label">骨科</span>
-            </button>
-            <button class="quick-btn">
-                <span class="icon">👁️</span>
-                <span class="label">眼科</span>
-            </button>
-            <button class="quick-btn">
-                <span class="icon">👶</span>
-                <span class="label">产科</span>
-            </button>
-            <button class="quick-btn">
-                <span class="icon">🌸</span>
-                <span class="label">妇科</span>
-            </button>
-            <button class="quick-btn">
-                <span class="icon">🩺</span>
-                <span class="label">皮肤科</span>
-            </button>
+    <!-- 第 2 步：选医生 -->
+    <div id="step2" style="display:none">
+      <div id="doctorList" class="cards"></div>
+      <div class="actions">
+        <button class="btn" onclick="goHome()">← 返回上一步</button>
+      </div>
+    </div>
+
+    <!-- 第 3 步：选日期与上下午 -->
+    <div id="step3" style="display:none">
+      <div id="dateList" class="dates"></div>
+      <div id="periodList" class="cards"></div>
+      <p class="tip" id="periodEmpty" style="display:none">该日期医生停诊或未排班，请选择其他日期。</p>
+      <div class="actions">
+        <button class="btn" onclick="backToDoctors()">← 返回上一步</button>
+      </div>
+    </div>
+
+    <!-- 第 4 步：确认挂号 -->
+    <div id="step4" style="display:none">
+      <div class="two-col">
+        <div class="box">
+          <h3>挂号信息</h3>
+          <p>就诊医院：<b id="cHospital"></b></p>
+          <p>就诊科室：<b id="cDept"></b></p>
+          <p>接诊医生：<b id="cDoctor"></b></p>
+          <p>就诊日期：<b id="cDate"></b></p>
+          <p>就诊时段：<b id="cPeriod"></b></p>
+          <p>挂号费用：<b id="cFee"></b></p>
         </div>
+        <div class="box">
+          <h3>就诊人信息</h3>
+          <p><label for="pName">姓名</label>
+            <input id="pName" type="text" placeholder="请输入就诊人真实姓名" /></p>
+          <p><label for="pIdCard">身份证号</label>
+            <input id="pIdCard" type="text" maxlength="18" placeholder="18 位身份证号" /></p>
+          <p><label for="pPhone">手机号</label>
+            <input id="pPhone" type="text" maxlength="11" placeholder="11 位手机号" /></p>
+          <p class="tip">提交后由服务端校验身份证号与手机号，校验不通过会提示原因。</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn" onclick="backToPeriods()">← 返回上一步</button>
+        <button class="btn primary" onclick="submitBooking()">确认挂号</button>
+      </div>
+    </div>
 
-    </main>
+    <!-- 挂号成功 -->
+    <div id="successBox" style="display:none" class="box">
+      <h3>✅ 挂号成功</h3>
+      <p>挂号单号：<b id="sId"></b></p>
+      <p>取号序号：<b id="sSeq"></b></p>
+      <p>就诊时间：<b id="sTime"></b></p>
+      <p>科室医生：<b id="sDoc"></b></p>
+      <p>挂号费用：<b id="sFee"></b></p>
+      <p class="tip">请于就诊时间前 15 分钟到院取号候诊。</p>
+      <div class="actions">
+        <button class="btn primary" onclick="showPage('mine')">查看我的挂号</button>
+        <button class="btn" onclick="goHome()">继续挂号</button>
+      </div>
+    </div>
+  </div>
 
-    <script src="./js/main.js"></script>
+  <!-- ==================== 我的挂号 ==================== -->
+  <div id="page-mine" style="display:none">
+    <h2>我的挂号</h2>
+    <p class="tip" id="mineTip"></p>
+    <p class="tip" id="mineEmpty" style="display:none"></p>
+    <div id="mineList"></div>
+  </div>
+
+  <!-- ==================== 管理后台登录 ==================== -->
+  <div id="page-login" style="display:none">
+    <h2>管理后台登录</h2>
+    <p class="tip">挂号记录包含就诊人姓名、手机号等信息，只有登录后才能查看。</p>
+    <div class="box narrow">
+      <p><label for="lgUser">用户名</label>
+        <input id="lgUser" type="text" placeholder="后台账号" /></p>
+      <p><label for="lgPwd">密码</label>
+        <input id="lgPwd" type="password" placeholder="登录密码" /></p>
+      <div class="actions">
+        <button class="btn primary" onclick="doLogin()">登 录</button>
+        <button class="btn" onclick="goHome()">← 返回患者端首页</button>
+      </div>
+      <p class="tip">演示账号：admin / admin123</p>
+    </div>
+  </div>
+
+  <!-- ==================== 管理后台 ==================== -->
+  <div id="page-admin" style="display:none">
+    <h2>管理后台</h2>
+    <p class="tip" id="adminTip"></p>
+    <div class="actions">
+      <button class="btn" id="tabRecords" onclick="showAdminTab('records')">挂号记录</button>
+      <button class="btn" id="tabSchedules" onclick="showAdminTab('schedules')">排班号源</button>
+      <button class="btn" onclick="doLogout()">退出登录</button>
+    </div>
+
+    <!-- 两个子页签的「架子」都写死在 html 里，js 只负责往里填数据 -->
+    <div id="adminBody">
+
+      <!-- 子页签一：挂号记录 -->
+      <div id="panel-records">
+        <div class="filters">
+          <select id="fDept" onchange="adminDept = this.value; renderRecords()"></select>
+          <select id="fDate" onchange="adminDate = this.value; renderRecords()"></select>
+          <input id="fKeyword" type="text" placeholder="姓名 / 手机号 / 单号"
+                 onkeydown="if (event.key === 'Enter') doSearch()" />
+          <button class="btn" onclick="doSearch()">搜索</button>
+          <button class="btn" onclick="clearFilters()">清空筛选</button>
+        </div>
+        <table class="data">
+          <thead>
+            <tr>
+              <th>单号</th><th>就诊人</th><th>科室 / 医生</th><th>就诊时间</th>
+              <th>序号</th><th>费用</th><th>状态</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="recordsBody"></tbody>
+        </table>
+        <p class="tip" id="recordsCount"></p>
+      </div>
+
+      <!-- 子页签二：排班号源 -->
+      <div id="panel-schedules" style="display:none">
+        <div class="filters">
+          <select id="sDept" onchange="adminDept = this.value; renderSchedules()"></select>
+        </div>
+        <div class="dates" id="scheduleDates"></div>
+        <p class="tip" id="schedulesCount"></p>
+        <div class="cards" id="schedulesCards"></div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<script src="js/app.js"></script>
 </body>
 </html>
