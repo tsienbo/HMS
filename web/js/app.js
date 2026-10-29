@@ -404,7 +404,8 @@ async function request(method, url, body, retried) {
       const m = /[?&]idCard=([^&]+)/.exec(url);
       const idCard = (body && body.patient && body.patient.idCard)
         || (m ? decodeURIComponent(m[1]) : '') || loadSession().idCard || '';
-      const ok = await openPatientAuth(idCard, err.message);
+      const name = (body && body.patient && body.patient.name) || loadSession().name || '';
+      const ok = await openPatientAuth(idCard, err.message, name);
       if (ok) return request(method, url, body, true);
     }
     throw err;
@@ -445,51 +446,34 @@ function allPatientTokens() {
 
 let patientAuthResolve = null;
 
-/* 打开身份验证框，返回 Promise：验证成功给 true，取消给 false */
-function openPatientAuth(idCard, why) {
+/* 打开实名校验框，返回 Promise：校验通过给 true，取消给 false */
+function openPatientAuth(idCard, why, name) {
   return new Promise(function (resolve) {
     patientAuthResolve = resolve;
+    document.getElementById('paName').value = name || '';
     document.getElementById('paIdCard').value = idCard || '';
-    document.getElementById('paCode').value = '';
     document.getElementById('paTip').textContent = why || '';
     document.getElementById('patientAuthMask').style.display = 'flex';
+    document.getElementById(name ? 'paIdCard' : 'paName').focus();
   });
 }
 
-async function sendPatientAuthCode() {
+/* 姓名 + 身份证号实名校验（模拟公安二要素，比对逻辑在数据库函数 fn_verify_identity） */
+async function submitPatientAuth() {
+  const name = document.getElementById('paName').value.trim();
   const idCard = document.getElementById('paIdCard').value.trim().toUpperCase();
   const tip = document.getElementById('paTip');
-  if (!idCard) { tip.textContent = '请先填写身份证号'; return; }
-  const btn = document.getElementById('paSend');
+  if (!name || !idCard) { tip.textContent = '请填写姓名和身份证号'; return; }
+  const btn = document.getElementById('paSubmit');
   btn.disabled = true;
   try {
-    const r = await request('POST', '/patient-auth/request', { idCard: idCard }, true);
-    if (r.demoCode) {
-      /* 演示模式：服务端还没接短信平台，码发不到手机上，直接填好 */
-      document.getElementById('paCode').value = r.demoCode;
-      tip.textContent = '【演示模式】尚未接入短信平台，验证码 ' + r.demoCode + ' 已自动填好，点「验证」即可。';
-    } else {
-      tip.textContent = '验证码已发送至 ' + r.sentTo + '，10 分钟内有效。';
-    }
-    document.getElementById('paCode').focus();
-    setTimeout(function () { btn.disabled = false; }, 60000);
-  } catch (e) {
-    tip.textContent = e.message;
-    btn.disabled = false;
-  }
-}
-
-async function submitPatientAuth() {
-  const idCard = document.getElementById('paIdCard').value.trim().toUpperCase();
-  const code = document.getElementById('paCode').value.trim();
-  const tip = document.getElementById('paTip');
-  if (!idCard || !code) { tip.textContent = '请填写身份证号和验证码'; return; }
-  try {
-    const r = await request('POST', '/patient-auth/verify', { idCard: idCard, code: code }, true);
+    const r = await request('POST', '/patient-auth/realname', { name: name, idCard: idCard }, true);
     savePatientToken(idCard, r.patientToken);
     finishPatientAuth(true);
   } catch (e) {
     tip.textContent = e.message;
+  } finally {
+    btn.disabled = false;
   }
 }
 

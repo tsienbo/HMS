@@ -675,7 +675,42 @@ def create_appointment():
 
 
 # ------------------------------------------------------------
-# 患者身份验证：身份证号 → 向档案登记的手机/邮箱发码 → 换凭证
+# 患者身份验证（现行方式）：姓名 + 身份证号实名校验 → 换凭证
+#
+# 前提假设：身份证号与姓名未泄露，二者一致即视为本人。
+# 下面「发验证码 → 换凭证」那两个接口保留，接入短信平台后可切回。
+# ------------------------------------------------------------
+
+@app.post("/api/patient-auth/realname")
+def patient_auth_realname():
+    try:
+        body = body_json()
+        ok, msg, name = check_name(body.get("name"))
+        if not ok:
+            return jsonify(error=msg), 400
+        ok, msg, id_card = check_id_card(body.get("idCard"))
+        if not ok:
+            return jsonify(error=msg), 400
+
+        if not verify_identity(name, id_card, "auth"):
+            return jsonify(error="实名校验未通过：姓名与身份证号不匹配，请核对后重试",
+                           code="REALNAME_MISMATCH"), 400
+
+        r = query("SELECT id FROM patients WHERE id_card = %s", [id_card])
+        if r.rowcount == 0:
+            return jsonify(error="实名校验通过，但还没有就诊档案，挂一次号即可自动建档",
+                           code="NO_RECORD"), 404
+
+        return jsonify(patientToken=issue_patient_token(r.rows[0]["id"]),
+                       expireDays=PATIENT_TOKEN_DAYS)
+    except Exception as err:                                  # noqa: BLE001
+        app.logger.error("[实名校验] %s", err)
+        status, msg = db_error(err)
+        return jsonify(error=msg), status
+
+
+# ------------------------------------------------------------
+# 患者身份验证（备用）：身份证号 → 向档案登记的手机/邮箱发码 → 换凭证
 # ------------------------------------------------------------
 
 @app.post("/api/patient-auth/request")
@@ -1396,60 +1431,45 @@ def stats_doctors():
 # 接口只负责「排队」「确认」「取消」这三个动作。
 # ============================================================
 
+def verify_identity(name, id_card, purpose):
+    """模拟实名校验（姓名 + 身份证号「二要素」），逻辑在数据库函数 fn_verify_identity 里：
+    人口库里有这个身份证号就比对姓名，没有就模拟查询成功并登记。每次都写校验日志。"""
+    r = query("SELECT fn_verify_identity(%s, %s, %s, %s) AS ok",
+              [name, id_card, purpose, client_ip()])
+    return bool(r.rows[0]["ok"])
+
+
 def resolve_patient(patient, email, trusted=False):
     """按身份证找 / 建患者档案。挂号、候补、代约三条路径共用。
 
     返回 (patient_id, 新凭证或 None, 提示或 None, 错误响应或 None)。
 
-    ★ 已有档案时，只有「带着这个就诊人的凭证」或「窗口人员代约（trusted）」
-      才能改姓名 / 手机号 / 邮箱。以前这里是无条件 upsert ——
-      知道别人身份证号的人挂一次号，就能把对方的手机号换成自己的，
-      之后的验证码、提醒全发到他那里。
+    ★ 先做实名校验：姓名与身份证号对得上才视为本人（前提：二者未泄露）。
+      通过后姓名 / 手机号 / 邮箱以这次填写为准，并发一个就诊人凭证，
+      之后查记录、退号、改资料都不用再校验。
+      窗口代约（trusted）同样要过实名校验 —— 防止手误录错名字，
+      只是不给工作人员的浏览器发患者凭证。
     """
-    def find():
-        return query("SELECT id, name, phone, email FROM patients WHERE id_card = %s",
-                     [patient["idCard"]])
-
-    r = find()
-    if r.rowcount == 0:
-        ins = query(
-            """INSERT INTO patients (id, name, id_card, phone, email)
-               VALUES ('P' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
-                       %s, %s, %s, %s)
-               ON CONFLICT (id_card) DO NOTHING
-               RETURNING id""",
-            [patient["name"], patient["idCard"], patient["phone"], email],
-        )
-        if ins.rowcount == 1:
-            pid = ins.rows[0]["id"]
-            # 档案是这次请求建的，建档人就是本人：直接发凭证
-            return pid, (None if trusted else issue_patient_token(pid)), None, None
-        r = find()   # 并发下别人刚建好，按已有档案处理
-
-    row = r.rows[0]
-    if trusted or row["id"] in request_patient_ids():
-        query(
-            """UPDATE patients
-                  SET name = %s, phone = %s,
-                      email = COALESCE(%s, email), updated_at = NOW()
-                WHERE id = %s""",
-            [patient["name"], patient["phone"], email, row["id"]],
-        )
-        return row["id"], None, None, None
-
-    if row["name"] != patient["name"]:
-        # 不能直接拒绝：档案里的名字可能本来就填错了，本人要能改过来。
-        # 回 PATIENT_AUTH_REQUIRED，前端会弹验证框；验证通过后带着凭证重发，
-        # 就走上面「本人」分支，姓名随这次挂号一起更新。
+    if not verify_identity(patient["name"], patient["idCard"],
+                           "proxy" if trusted else "booking"):
         return None, None, None, (jsonify(
-            error="姓名与该身份证号的档案不一致。如果是本人，请验证身份后更新档案",
-            code="PATIENT_AUTH_REQUIRED"), 401)
+            error="实名校验未通过：姓名与身份证号不匹配，请核对后重试",
+            code="REALNAME_MISMATCH"), 400)
 
-    notice = None
-    if row["phone"] != patient["phone"] or (email and email != row["email"]):
-        notice = ("该就诊人已建档，就诊提醒仍发送到档案登记的联系方式（%s）。"
-                  "如需修改，请在「我的资料」中验证身份后修改。" % mask_phone_str(row["phone"]))
-    return row["id"], None, notice, None
+    r = query(
+        """INSERT INTO patients (id, name, id_card, phone, email)
+           VALUES ('P' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
+                   %s, %s, %s, %s)
+           ON CONFLICT (id_card) DO UPDATE
+              SET name  = EXCLUDED.name,
+                  phone = EXCLUDED.phone,
+                  email = COALESCE(EXCLUDED.email, patients.email),
+                  updated_at = NOW()
+           RETURNING id""",
+        [patient["name"], patient["idCard"], patient["phone"], email],
+    )
+    pid = r.rows[0]["id"]
+    return pid, (None if trusted else issue_patient_token(pid)), None, None
 
 
 def map_waitlist(r):

@@ -25,7 +25,8 @@ from db import DB_NAME, pool, query
 HERE = Path(__file__).resolve().parent
 V3_FILE = HERE / "schema_v3.sql"
 
-EXPECTED_V3_TABLES = ["waitlist", "notification_outbox", "access_log", "blacklist"]
+EXPECTED_V3_TABLES = ["waitlist", "notification_outbox", "access_log", "blacklist",
+                      "citizen_registry", "identity_verify_log"]
 EXPECTED_V3_VIEWS = ["v_waitlist_detail"]
 EXPECTED_V3_TRIGGERS = [
     "trg_waitlist_touch", "trg_waitlist_before_insert", "trg_waitlist_before_update",
