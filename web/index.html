@@ -155,7 +155,8 @@
   <div id="page-admin" style="display:none">
     <h2>管理后台</h2>
     <p class="tip" id="adminTip"></p>
-    <div class="actions">
+    <!-- 页签按钮：每行几个由 layoutAdminTabs() 按宽度算，保证各行数量相同 -->
+    <div class="actions admin-tabs" id="adminTabs">
       <button class="btn" id="tabRecords" onclick="showAdminTab('records')">挂号记录</button>
       <button class="btn" id="tabSchedules" onclick="showAdminTab('schedules')">排班号源</button>
       <button class="btn" id="tabWaitlist" onclick="showAdminTab('waitlist')">候补队列</button>

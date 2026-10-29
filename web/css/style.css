@@ -73,6 +73,34 @@ p  { margin: 8px 0; }
   flex-wrap: wrap;
 }
 
+/* 手机：顶栏固定两行 —— 第一行 Logo + 右侧按钮，第二行导航单行横向滑动。
+ * 以前导航自动换行，加上登录信息一共三四行，吸顶的顶栏能吃掉小半屏。 */
+@media (max-width: 700px) {
+  .topbar .wrap { gap: 6px 10px; padding-top: 6px; }
+  .logo { order: 1; font-size: 16px; }
+  /* 右侧按钮区可以收缩，和 Logo 挤在同一行；放不下时先截断登录名，而不是整块掉到下一行 */
+  .login-info { order: 2; flex: 1 1 0; min-width: 0; flex-wrap: nowrap; justify-content: flex-end; }
+  .login-info .btn { flex-shrink: 0; }
+  /* 「张明（管理员）」这类登录信息：缩小字号，太长就省略号截断 */
+  .login-info #loginInfo {
+    font-size: 13px;
+    min-width: 0;
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .nav {
+    order: 3;
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 16px;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+}
+
 .main { padding-top: 20px; padding-bottom: 60px; }
 
 /* ---------- 小字提示 ---------- */
@@ -101,7 +129,8 @@ p  { margin: 8px 0; }
   color: #fff;
 }
 .btn.primary:hover { background: #1d4fd7; color: #fff; }
-.btn.on { border-color: #2563eb; color: #2563eb; }
+/* 选中态要和悬停态区分开：悬停只变边框和字色，选中再加浅底和加粗 */
+.btn.on { border-color: #2563eb; color: #2563eb; background: #eef3ff; font-weight: 600; }
 .btn.small { padding: 6px 12px; font-size: 14px; min-height: 36px; }
 .btn.huge { padding: 16px 36px; font-size: 20px; border-radius: 10px; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
@@ -113,6 +142,15 @@ p  { margin: 8px 0; }
   align-items: center;
   margin: 16px 0;
 }
+
+/* 管理后台页签：用网格排，每行几列由 JS（layoutAdminTabs）按宽度算，
+ * 这样换行时各行按钮数量相同（8 个 → 一行 8 / 两行各 4 / 四行各 2），
+ * 不会出现「上面 6 个、下面 2 个」。下面这行是 JS 没跑时的兜底。 */
+.admin-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+}
+.admin-tabs .btn { width: 100%; white-space: nowrap; }
 
 /* ---------- 卡片 ---------- */
 .cards {
@@ -233,6 +271,13 @@ input[type="number"] { width: 72px; text-align: center; }
 }
 .filters input[type="text"] { min-width: 200px; }
 
+/* 手机：筛选栏排整齐 —— 下拉框两两一行，搜索框独占一行，按钮平分一行 */
+@media (max-width: 700px) {
+  .filters select { flex: 1 1 calc(50% - 4px); min-width: 0; }
+  .filters input[type="text"] { flex: 1 1 100%; min-width: 0; }
+  .filters .btn { flex: 1 1 0; }
+}
+
 /* ---------- 表格 ---------- */
 table.data {
   width: 100%;
@@ -247,8 +292,47 @@ table.data th, table.data td {
   font-size: 14px;
   vertical-align: top;
 }
-table.data th { background: #f0f2f5; font-weight: bold; }
+table.data th { background: #f0f2f5; font-weight: bold; white-space: nowrap; }
 table.data tr:last-child td { border-bottom: none; }
+
+/* 窄屏：表格改成「一条记录一张卡片」，每项一行「字段名  内容」。
+ * 以前 8 列硬挤在手机宽度里，每列被压到一个字宽，文字竖着排。
+ * 字段名来自表头，由 app.js 的 labelTableCells() 写到 data-label 上。 */
+@media (max-width: 860px) {
+  table.data, table.data tbody, table.data tr, table.data td { display: block; width: 100%; }
+  table.data thead { display: none; }
+  table.data { border: none; background: transparent; }
+  table.data tr {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 10px;
+  }
+  /* 内容整体右移，字段名绝对定位在左边：单元格里有换行、多段文字、按钮时照常排，
+   * 不会像 flex 那样把每一段挤成一列 */
+  table.data td {
+    position: relative;
+    border-bottom: 1px dashed #eef0f3;
+    padding: 7px 0 7px 84px;
+    min-height: 34px;
+    word-break: break-word;
+  }
+  table.data tr td:last-child { border-bottom: none; }
+  table.data td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 0;
+    top: 7px;
+    width: 76px;
+    color: #6b7280;
+  }
+  table.data td[colspan] { padding-left: 0; }
+  table.data td[colspan]::before { content: none; }
+  /* 「操作」那一格：按钮横着排，放得下就一行 */
+  table.data td .btn.small { margin: 0 6px 6px 0; }
+  table.data td .btn.small + .btn.small { margin-left: 0; }
+}
 
 /* ============================================================
  * 以下是 v3.2 新增：首页 / 进度条 / 状态徽章 / 标签页 / 成功页
@@ -310,6 +394,22 @@ table.data tr:last-child td { border-bottom: none; }
 .progress-bar .step.done span { background: #dbeafe; color: #2563eb; }
 .progress-bar .step.done:hover { border-color: #2563eb; background: #f5f8ff; }
 
+/* 手机：四个步骤并排时每格只有八十多像素，「选医生与日期」会被拆成两半。
+ * 改成「数字在上、文字在下」，文字缩小一号且不换行 */
+@media (max-width: 560px) {
+  .progress-bar { gap: 6px; }
+  .progress-bar .step {
+    padding: 8px 2px;
+    font-size: 12px;
+    white-space: nowrap;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .progress-bar .step span { margin-right: 0; }
+}
+
 .form-error { color: #dc2626; font-size: 14px; min-height: 1em; margin: 6px 0; }
 
 /* ---------- 状态徽章 ---------- */
@@ -349,7 +449,9 @@ table.data tr:last-child td { border-bottom: none; }
   font-size: 18px; font-weight: bold;
   flex-shrink: 0;
 }
-.doc-card .info { flex: 1; }
+/* min-width: 0 必须有：否则里面那条不换行的日期栏会把卡片撑得比屏幕还宽，
+ * 手机上右边的价格、下午时段被截掉。加上后日期栏在卡片内部横向滑动 */
+.doc-card .info { flex: 1; min-width: 0; }
 .doc-card .name { font-size: 16px; font-weight: bold; }
 .doc-card .meta { color: #6b7280; font-size: 14px; margin: 4px 0; }
 .doc-card .actions { margin-top: 8px; }

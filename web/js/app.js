@@ -1390,6 +1390,70 @@ function clearLocalPatient() {
 /* ---------- 切子页签 ---------- */
 const ADMIN_TABS = ['records', 'schedules', 'waitlist', 'proxy', 'access', 'outbox', 'blacklist'];
 
+/* 管理后台页签排版：每行放几个按钮，让各行数量相同。
+ * 做法：先量出每个按钮「不挤」时要多宽，再从「一行放下全部」开始往下试，
+ * 优先选能整除按钮总数的列数（8 个 → 8 / 4 / 2 / 1），放得下就用它；
+ * 总数除不尽（比如某些角色只看到 7 个）时，退而求其次用放得下的最大列数。
+ * 窗口缩放、切换页签、切换大字版时都会重新算一遍。 */
+function layoutAdminTabs() {
+  const bar = document.getElementById('adminTabs');
+  if (!bar || bar.offsetParent === null) return;   // 页面没显示时量不出宽度
+
+  const btns = [];
+  for (let i = 0; i < bar.children.length; i++) {
+    if (bar.children[i].style.display !== 'none') btns.push(bar.children[i]);
+  }
+  const n = btns.length;
+  if (n === 0) return;
+
+  /* 先按内容宽度排一行，量出最宽的那个按钮和总宽度 */
+  bar.style.gridTemplateColumns = 'repeat(' + n + ', max-content)';
+  let widest = 0;
+  let total = 0;
+  for (let i = 0; i < btns.length; i++) {
+    const w = btns[i].getBoundingClientRect().width;
+    total += w;
+    if (w > widest) widest = w;
+  }
+
+  const gap = parseFloat(getComputedStyle(bar).columnGap) || 0;
+  const room = bar.clientWidth;
+
+  /* 按原本宽度一行就放得下：保持一行，不用等宽列（等宽会按最宽的按钮算，反而放不下） */
+  if (total + gap * (n - 1) <= room) return;
+  function fits(cols) { return (room - gap * (cols - 1)) / cols >= widest; }
+
+  let cols = 1;
+  let maxFit = 1;
+  for (let c = n; c >= 1; c--) {
+    if (!fits(c)) continue;
+    if (maxFit === 1) maxFit = c;              // 放得下的最大列数
+    if (n % c === 0 && c > 1) { cols = c; break; }
+  }
+  /* 能整除的只剩「每行 1 个」时（比如 7 个），先算至少要几行，
+   * 再把按钮平均分到这几行：7 个、一行最多放 6 个 → 2 行 → 每行 4 个（4 + 3），
+   * 而不是 6 + 1 */
+  if (cols === 1 && maxFit > 1) {
+    const rows = Math.ceil(n / maxFit);
+    cols = Math.ceil(n / rows);
+  }
+
+  bar.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+}
+/* 盯住页签容器自己的宽度变化（窗口缩放、出现滚动条、手机横竖屏都算），
+ * 比 window 的 resize 事件可靠。宽度没变时不重排，避免排完高度变了又触发自己 */
+let adminTabsWidth = 0;
+if (window.ResizeObserver) {
+  new ResizeObserver(function (entries) {
+    const w = Math.round(entries[0].contentRect.width);
+    if (w === adminTabsWidth) return;
+    adminTabsWidth = w;
+    layoutAdminTabs();
+  }).observe(document.getElementById('adminTabs'));
+} else {
+  window.addEventListener('resize', layoutAdminTabs);
+}
+
 function showAdminTab(tab) {
   /* 角色不够就退回到「挂号记录」—— 前端先挡一道，服务端还会再挡 */
   if (!canSee(tab)) {
@@ -1413,6 +1477,7 @@ function showAdminTab(tab) {
     const btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     if (btn) btn.style.display = canSee(t) ? '' : 'none';
   }
+  layoutAdminTabs();
 
   const tips = {
     records: '挂号记录（含已取消、已停诊）· 患者隐私默认脱敏',
@@ -1735,7 +1800,37 @@ async function toggleSchedule(scheduleId) {
  * 十二、启动
  * ============================================================ */
 
+/* 手机上表格改成「一行一张卡片」显示（CSS 在 style.css「表格」一节）。
+ * 卡片里每一项前面要有字段名，所以把表头文字抄到每个单元格的 data-label 上。
+ * 用 MutationObserver 监听所有 tbody：各页面照旧用 innerHTML 填数据，
+ * 填完自动补标签，渲染代码一行都不用改，以后新加表格也自动生效。 */
+function labelTableCells(table) {
+  const ths = table.querySelectorAll('thead th');
+  const rows = table.querySelectorAll('tbody tr');
+  for (let i = 0; i < rows.length; i++) {
+    const cells = rows[i].children;
+    for (let j = 0; j < cells.length; j++) {
+      if (cells[j].hasAttribute('colspan')) continue;   // 「暂无数据」那种整行提示不加标签
+      if (ths[j]) cells[j].setAttribute('data-label', ths[j].textContent.trim());
+    }
+  }
+}
+
+function watchDataTables() {
+  const tables = document.querySelectorAll('table.data');
+  for (let i = 0; i < tables.length; i++) {
+    const table = tables[i];
+    const body = table.querySelector('tbody');
+    if (!body) continue;
+    labelTableCells(table);
+    new MutationObserver(function () { labelTableCells(table); })
+      .observe(body, { childList: true });
+  }
+}
+
 window.onload = async function () {
+  watchDataTables();
+
   /* 0. 先把上次选的字号恢复上 —— 老年患者不希望每次进来都重按一遍 */
   try {
     applyBigFont(localStorage.getItem(BIGFONT_KEY) === '1');
@@ -2452,6 +2547,8 @@ function applyBigFont(on) {
     btn.textContent = on ? '标准字号' : '大字版';
     btn.className = on ? 'btn small on' : 'btn small';
   }
+  /* 字号变了按钮宽度跟着变，后台页签要重新排 */
+  layoutAdminTabs();
 }
 
 function toggleBigFont() {
