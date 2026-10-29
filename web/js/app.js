@@ -400,8 +400,11 @@ async function request(method, url, body, retried) {
 
     /* 患者端没带有效凭证：弹验证框，验证通过后原样重发一次 */
     if (err.code === 'PATIENT_AUTH_REQUIRED' && !retried) {
+      /* 身份证号：挂号 / 候补在请求体里，查询类在 URL 参数里，都没有就用上次的 */
       const m = /[?&]idCard=([^&]+)/.exec(url);
-      const ok = await openPatientAuth(m ? decodeURIComponent(m[1]) : (loadSession().idCard || ''));
+      const idCard = (body && body.patient && body.patient.idCard)
+        || (m ? decodeURIComponent(m[1]) : '') || loadSession().idCard || '';
+      const ok = await openPatientAuth(idCard, err.message);
       if (ok) return request(method, url, body, true);
     }
     throw err;
@@ -443,12 +446,12 @@ function allPatientTokens() {
 let patientAuthResolve = null;
 
 /* 打开身份验证框，返回 Promise：验证成功给 true，取消给 false */
-function openPatientAuth(idCard) {
+function openPatientAuth(idCard, why) {
   return new Promise(function (resolve) {
     patientAuthResolve = resolve;
     document.getElementById('paIdCard').value = idCard || '';
     document.getElementById('paCode').value = '';
-    document.getElementById('paTip').textContent = '';
+    document.getElementById('paTip').textContent = why || '';
     document.getElementById('patientAuthMask').style.display = 'flex';
   });
 }

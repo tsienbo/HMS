@@ -1419,7 +1419,12 @@ def resolve_patient(patient, email, trusted=False):
         return row["id"], None, None, None
 
     if row["name"] != patient["name"]:
-        return None, None, None, (jsonify(error="姓名与该身份证号的档案不一致"), 400)
+        # 不能直接拒绝：档案里的名字可能本来就填错了，本人要能改过来。
+        # 回 PATIENT_AUTH_REQUIRED，前端会弹验证框；验证通过后带着凭证重发，
+        # 就走上面「本人」分支，姓名随这次挂号一起更新。
+        return None, None, None, (jsonify(
+            error="姓名与该身份证号的档案不一致。如果是本人，请验证身份后更新档案",
+            code="PATIENT_AUTH_REQUIRED"), 401)
 
     notice = None
     if row["phone"] != patient["phone"] or (email and email != row["email"]):
