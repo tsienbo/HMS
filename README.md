@@ -90,7 +90,7 @@ python server/app.py                # 启动服务
 ## 目录结构
 
 ```
-hospital-registration/
+HMS/
 ├── web/                    前端（服务端只公开这一个目录）
 │   ├── index.html          页面骨架与弹窗
 │   ├── css/style.css       样式（含移动端适配）
