@@ -65,6 +65,8 @@ def generate_appointment_no():
 # 项目根目录 = server/ 的上一层。前端页面也由这个服务一起发出去，
 # 所以不用再开第二个端口。
 ROOT = Path(__file__).resolve().parent.parent
+# 前端文件全部放在 web/ 里，对外只公开这一个目录
+WEB = ROOT / "web"
 
 # 后端监听的端口。平时就是 3000。
 PORT = int(os.environ.get("PORT") or 3000)
@@ -76,10 +78,10 @@ HOST = os.environ.get("HOST") or "127.0.0.1"
 # 一、应用与静态文件
 # ============================================================
 
-# ★ 不能把整个项目目录当静态目录：那样 /server/mail.env（SMTP 密码）、
+# ★ 静态目录只能是 web/，不能是项目根目录：那样 /server/mail.env（SMTP 密码）、
 #   /server/db.py（数据库密码）、/.git/、/.mail-outbox.log（验证码）都能被直接下载。
-#   内置静态路由关掉，只放行下面 serve_static 里列出的前端文件。
-app = Flask(__name__, static_folder=None)
+#   web/ 里只放浏览器需要的文件，别的东西一律不要放进去。
+app = Flask(__name__, static_folder=str(WEB), static_url_path="")
 
 # 前端一次最多能发多大的请求体。挂号表单很小，256KB 足够。
 app.config["MAX_CONTENT_LENGTH"] = 256 * 1024
@@ -96,13 +98,7 @@ app.json.ensure_ascii = False
 @app.get("/")
 def index():
     """首页。Express 的 express.static 会自动把 / 指到 index.html，这里显式写一行。"""
-    return send_from_directory(ROOT, "index.html")
-
-
-@app.get("/<any(css, js):folder>/<path:name>")
-def serve_static(folder, name):
-    """只放行 css/ 和 js/ 下的文件；send_from_directory 自己会挡住 ../ 越界。"""
-    return send_from_directory(ROOT / folder, name)
+    return send_from_directory(WEB, "index.html")
 
 
 # ------------------------------------------------------------

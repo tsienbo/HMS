@@ -3,7 +3,7 @@
 __pycache__/
 *.py[cod]
 
-# 旧版 Node 依赖（源码已归档到 legacy-node/，这里留着只是防止误提交）
+# 旧版 Node 依赖（旧版源码已移到工作区 legacy/legacy-node/，这里留着只是防止误提交）
 node_modules/
 
 # 其他

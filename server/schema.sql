@@ -21,7 +21,7 @@
 --   不存在第二家医院，因此不建 hospitals 表 —— 否则
 --   departments.hospital_id / schedules.hospital_id 三列恒为同一个值，
 --   UNIQUE(hospital_id, name) 会退化成 UNIQUE(name)，属于典型的「伪 1:N」冗余。
---   医院名称、等级、地址等展示信息放在前端常量 js/app.js 的 HOSPITAL 中。
+--   医院名称、等级、地址等展示信息放在前端常量 web/js/app.js 的 HOSPITAL 中。
 -- ============================================================
 
 -- ------------------------------------------------------------

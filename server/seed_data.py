@@ -11,7 +11,7 @@ from datetime import date, timedelta
 # 科室
 #
 # 单院区部署，医院是部署期常量，所以没有 hospitals 表；
-# 医院名称 / 等级 / 地址和科室图标都在前端 js/app.js 里。
+# 医院名称 / 等级 / 地址和科室图标都在前端 web/js/app.js 里。
 # ------------------------------------------------------------
 DEPARTMENTS = [
     {"id": "D01", "name": "内科", "description": "感冒发热、高血压、糖尿病等常见内科疾病", "location": "门诊楼 2 层东区"},
