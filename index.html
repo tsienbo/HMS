@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>智慧医院预约挂号系统</title>
+<!-- 内联一个空图标：不写这一行浏览器会去请求 /favicon.ico，控制台永远挂一条 404 -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🏥</text></svg>" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- ==================== 顶栏 ==================== -->
+<div class="topbar">
+  <div class="wrap">
+    <span class="logo" onclick="goHome()">🏥 智慧医院挂号平台</span>
+    <span class="nav" id="topNav">
+      <a id="navHome" onclick="goHome()">首页</a>
+      <a id="navBooking" onclick="startBooking()">立即挂号</a>
+      <a id="navMine" onclick="showPage('mine')">我的预约</a>
+      <a id="navFind" onclick="showPage('find')">找医生</a>
+      <a id="navReminders" onclick="showPage('reminders')">就诊提醒</a>
+      <a id="navProfile" onclick="showPage('profile')">我的资料</a>
+      <a id="navAdmin" onclick="goAdmin()">工作人员</a>
+    </span>
+    <span class="login-info">
+      <button class="btn small" id="fontToggle" onclick="toggleBigFont()"
+              title="把全站字号放大一档">大字版</button>
+      <button class="btn small" id="logoutBtn" onclick="doLogout()" style="display:none">退出登录</button>
+      <span id="loginInfo"></span>
+    </span>
+  </div>
+</div>
+
+<div class="wrap main">
+
+  <!-- ==================== 首页 ==================== -->
+  <div id="page-home">
+    <div class="hero">
+      <h1>🏥 智慧医院挂号平台</h1>
+      <p class="sub">三级甲等 · 市第一人民医院</p>
+      <button class="btn huge primary" onclick="startBooking()">立即挂号</button>
+      <p class="tip assist">不会操作智能手机？可拨打 <b>0571-8888 0120</b> 由工作人员代约，或让子女帮忙操作。</p>
+    </div>
+    <div class="shortcut-grid">
+      <div class="card" onclick="showPage('mine')">
+        <div class="card-title">📋 我的预约</div>
+        <div class="tip">查看待就诊、已完成、已取消的挂号记录</div>
+      </div>
+      <div class="card" onclick="showPage('find')">
+        <div class="card-title">🔍 找医生</div>
+        <div class="tip">按科室查找医生，了解擅长方向与余号</div>
+      </div>
+      <div class="card" onclick="showPage('reminders')">
+        <div class="card-title">🔔 就诊提醒</div>
+        <div class="tip">查看已设置的就诊前提醒与通知</div>
+      </div>
+      <div class="card" onclick="showPage('profile')">
+        <div class="card-title">👤 我的资料</div>
+        <div class="tip">管理就诊人信息，支持切换常用就诊人</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 挂号向导（4 步） ==================== -->
+  <div id="page-booking" style="display:none">
+    <div class="progress-bar" id="bookingProgress">
+      <div class="step on" data-step="1"><span>1</span> 选科室</div>
+      <div class="step" data-step="2"><span>2</span> 选医生与日期</div>
+      <div class="step" data-step="3"><span>3</span> 确认预约</div>
+      <div class="step" data-step="4"><span>4</span> 预约成功</div>
+    </div>
+    <div id="bookingBody"></div>
+  </div>
+
+  <!-- ==================== 我的预约 ==================== -->
+  <div id="page-mine" style="display:none">
+    <h2>我的预约</h2>
+    <div class="tabs" id="mineTabs">
+      <button class="btn on" data-tab="upcoming" onclick="switchMineTab('upcoming')">待就诊</button>
+      <button class="btn" data-tab="completed" onclick="switchMineTab('completed')">已完成</button>
+      <button class="btn" data-tab="cancelled" onclick="switchMineTab('cancelled')">已取消</button>
+    </div>
+    <p class="tip" id="mineTip"></p>
+    <div id="mineList"></div>
+  </div>
+
+  <!-- ==================== 找医生 ==================== -->
+  <div id="page-find" style="display:none">
+    <h2>找医生</h2>
+    <div class="filters">
+      <input id="findKeyword" type="text" placeholder="搜索医生姓名或科室"
+             onkeydown="if (event.key === 'Enter') renderFind()" />
+      <button class="btn primary" onclick="renderFind()">搜索</button>
+    </div>
+    <div id="findList"></div>
+  </div>
+
+  <!-- ==================== 就诊提醒 ==================== -->
+  <div id="page-reminders" style="display:none">
+    <h2>就诊提醒</h2>
+    <p class="tip" id="reminderTip"></p>
+    <div id="reminderList"></div>
+  </div>
+
+  <!-- ==================== 我的资料 ==================== -->
+  <div id="page-profile" style="display:none">
+    <h2>我的资料</h2>
+    <p class="tip">修改姓名、手机号或邮箱。身份以身份证号为准，不可修改。</p>
+    <div class="box narrow">
+      <p><label for="pIdCardLook">身份证号</label>
+        <input id="pIdCardLook" type="text" maxlength="18"
+               placeholder="请输入就诊人身份证号" />
+        <button class="btn" onclick="loadProfile()">加载</button></p>
+      <p class="tip" id="profileTip"></p>
+      <div id="profileForm" style="display:none">
+        <p><label for="pNameEdit">姓名</label>
+          <input id="pNameEdit" type="text" maxlength="20" /></p>
+        <p><label for="pIdCardEdit">身份证号</label>
+          <input id="pIdCardEdit" type="text" maxlength="18" readonly
+                 style="background:#f3f4f6;color:#6b7280" /></p>
+        <p><label for="pPhoneEdit">手机号</label>
+          <input id="pPhoneEdit" type="text" maxlength="11" /></p>
+        <p><label for="pEmailEdit">邮箱</label>
+          <input id="pEmailEdit" type="text" maxlength="120"
+                 placeholder="选填，填了能收到就诊提醒" /></p>
+        <div class="actions">
+          <button class="btn primary" onclick="saveProfile()">保存修改</button>
+          <button class="btn" onclick="clearLocalPatient()">切换就诊人 / 清除本机记录</button>
+          <span class="tip" id="profileSaveTip"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 管理后台登录 ==================== -->
+  <div id="page-login" style="display:none">
+    <h2>管理后台登录</h2>
+    <p class="tip">挂号记录包含就诊人姓名、手机号等信息，只有登录后才能查看。</p>
+    <div class="box narrow">
+      <p><label for="lgUser">用户名</label>
+        <input id="lgUser" type="text" placeholder="后台账号" /></p>
+      <p><label for="lgPwd">密码</label>
+        <input id="lgPwd" type="password" placeholder="登录密码" /></p>
+      <div class="actions">
+        <button class="btn primary" onclick="doLogin()">登 录</button>
+        <button class="btn" onclick="goHome()">← 返回患者端首页</button>
+      </div>
+      <p class="tip">演示账号：admin / admin123</p>
+    </div>
+  </div>
+
+  <!-- ==================== 管理后台 ==================== -->
+  <div id="page-admin" style="display:none">
+    <h2>管理后台</h2>
+    <p class="tip" id="adminTip"></p>
+    <div class="actions">
+      <button class="btn" id="tabRecords" onclick="showAdminTab('records')">挂号记录</button>
+      <button class="btn" id="tabSchedules" onclick="showAdminTab('schedules')">排班号源</button>
+      <button class="btn" id="tabWaitlist" onclick="showAdminTab('waitlist')">候补队列</button>
+      <button class="btn" id="tabProxy" onclick="showAdminTab('proxy')">窗口代约</button>
+      <button class="btn" id="tabAccess" onclick="showAdminTab('access')">访问日志</button>
+      <button class="btn" id="tabOutbox" onclick="showAdminTab('outbox')">通知发件箱</button>
+      <button class="btn" id="tabBlacklist" onclick="showAdminTab('blacklist')">黑名单</button>
+      <button class="btn" onclick="doLogout()">退出登录</button>
+    </div>
+
+    <div id="adminBody">
+      <!-- 子页签一：挂号记录 -->
+      <div id="panel-records">
+        <div class="filters">
+          <select id="fDept" onchange="adminDept = this.value; renderRecords()"></select>
+          <select id="fDate" onchange="adminDate = this.value; renderRecords()"></select>
+          <input id="fKeyword" type="text" placeholder="姓名 / 手机号 / 单号"
+                 onkeydown="if (event.key === 'Enter') doSearch()" />
+          <button class="btn" onclick="doSearch()">搜索</button>
+          <button class="btn" onclick="clearFilters()">清空筛选</button>
+        </div>
+        <table class="data">
+          <thead>
+            <tr>
+              <th>单号</th><th>就诊人</th><th>科室 / 医生</th><th>就诊时间</th>
+              <th>序号</th><th>费用</th><th>状态</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="recordsBody"></tbody>
+        </table>
+        <p class="tip" id="recordsCount"></p>
+      </div>
+
+      <!-- 子页签二：排班号源 -->
+      <div id="panel-schedules" style="display:none">
+        <div class="filters">
+          <select id="sDept" onchange="adminDept = this.value; renderSchedules()"></select>
+        </div>
+        <div class="dates" id="scheduleDates"></div>
+        <p class="tip" id="schedulesCount"></p>
+        <div class="cards" id="schedulesCards"></div>
+      </div>
+
+      <!-- 子页签三：候补队列 -->
+      <div id="panel-waitlist" style="display:none">
+        <p class="tip">按排班分组，队首是下一位。通知后保留 2 小时，超时自动顺延给下一位。</p>
+        <table class="data">
+          <thead>
+            <tr><th>候补号</th><th>号源</th><th>就诊人</th><th>排队号</th>
+                <th>状态</th><th>通知时间</th><th>保留到</th></tr>
+          </thead>
+          <tbody id="wlBody"></tbody>
+        </table>
+        <p class="tip" id="wlCount"></p>
+      </div>
+
+      <!-- 子页签四：窗口代约 -->
+      <div id="panel-proxy" style="display:none">
+        <p class="tip">老人打服务台电话或到窗口，由工作人员代挂号。
+          代约和自助挂号走同一套规则（号源、防黄牛限制一样生效），
+          区别只是审计日志里记成「代约:工号」。</p>
+        <div class="two-col">
+          <div class="box">
+            <h3>选号源</h3>
+            <p><label for="pxDept">科室</label>
+              <select id="pxDept" onchange="proxyDeptChange()"></select></p>
+            <p><label for="pxSchedule">时段</label>
+              <select id="pxSchedule"></select></p>
+            <p class="tip" id="pxRemain"></p>
+          </div>
+          <div class="box">
+            <h3>就诊人</h3>
+            <p><label for="pxName">姓名</label>
+              <input id="pxName" type="text" placeholder="就诊人真实姓名" /></p>
+            <p><label for="pxIdCard">身份证号</label>
+              <input id="pxIdCard" type="text" maxlength="18" placeholder="18 位身份证号" /></p>
+            <p><label for="pxPhone">手机号</label>
+              <input id="pxPhone" type="text" maxlength="11" placeholder="11 位手机号" /></p>
+            <p><label for="pxEmail">邮箱</label>
+              <input id="pxEmail" type="text" placeholder="选填" /></p>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" onclick="submitProxy()">确认代约</button>
+          <span class="tip" id="proxyTip"></span>
+        </div>
+      </div>
+
+      <!-- 子页签五：访问日志 -->
+      <div id="panel-access" style="display:none">
+        <p class="tip">谁在什么时候、因为什么看了谁的隐私信息。
+          管理员看患者明文身份证也必须填理由并留痕。</p>
+        <table class="data">
+          <thead>
+            <tr><th>时间</th><th>操作人</th><th>动作</th><th>对象</th>
+                <th>理由</th><th>来源 IP</th></tr>
+          </thead>
+          <tbody id="accessBody"></tbody>
+        </table>
+        <p class="tip" id="accessCount"></p>
+      </div>
+
+      <!-- 子页签六：通知发件箱 -->
+      <div id="panel-outbox" style="display:none">
+        <p class="tip">提醒与候补通知都先落进这张表，再由 worker 发出去。
+          发信失败会退避重试，三次之后标成 failed。</p>
+        <div class="actions">
+          <button class="btn" onclick="triggerScan()">立即扫描一轮（生成提醒 + 处理过期 + 发信）</button>
+          <span class="tip" id="scanTip"></span>
+        </div>
+        <table class="data">
+          <thead>
+            <tr><th>#</th><th>渠道</th><th>模板</th><th>收件人</th>
+                <th>状态</th><th>尝试</th><th>计划发送</th><th>备注</th></tr>
+          </thead>
+          <tbody id="outboxBody"></tbody>
+        </table>
+        <p class="tip" id="outboxCount"></p>
+      </div>
+
+      <!-- 子页签七：黑名单 -->
+      <div id="panel-blacklist" style="display:none">
+        <p class="tip">拉黑之后，数据库触发器会直接拒绝这个身份证挂号 ——
+          绕过接口手写 SQL 也一样挂不上。</p>
+        <div class="filters">
+          <input id="blIdCard" type="text" maxlength="18" placeholder="身份证号" />
+          <input id="blReason" type="text" placeholder="拉黑理由（至少 2 个字）" />
+          <input id="blUntil" type="date" title="不填 = 永久" />
+          <button class="btn" onclick="addBlacklist()">加入黑名单</button>
+        </div>
+        <table class="data">
+          <thead>
+            <tr><th>身份证</th><th>就诊人</th><th>理由</th><th>截止</th>
+                <th>操作人</th><th>操作</th></tr>
+          </thead>
+          <tbody id="blBody"></tbody>
+        </table>
+        <p class="tip" id="blCount"></p>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- ==================== 弹窗：验证码 ==================== -->
+<div class="modal-mask" id="captchaMask" style="display:none">
+  <div class="modal">
+    <h3>请先完成验证</h3>
+    <p class="tip" id="captchaWhy">该时段余号不多，需要验证一下不是脚本在抢号。</p>
+    <p class="captcha-q" id="captchaQuestion">…</p>
+    <p><label for="captchaAnswer">答案</label>
+      <input id="captchaAnswer" type="text" inputmode="numeric"
+             onkeydown="if (event.key === 'Enter') submitCaptcha()" /></p>
+    <p class="tip" id="captchaTip">算错了可以点「换一题」。</p>
+    <div class="actions">
+      <button class="btn" onclick="refreshCaptcha()">换一题</button>
+      <button class="btn" onclick="closeCaptcha()">取消</button>
+      <button class="btn primary" onclick="submitCaptcha()">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 弹窗：就诊人身份验证 ==================== -->
+<div class="modal-mask" id="patientAuthMask" style="display:none">
+  <div class="modal">
+    <h3>验证就诊人身份</h3>
+    <p class="tip">为保护隐私，查看或修改就诊人信息前需要验证一次，30 天内本机免验证。
+      验证码会发送到该就诊人档案登记的手机号 / 邮箱。</p>
+    <p><label for="paIdCard">身份证号</label>
+      <input id="paIdCard" type="text" maxlength="18" placeholder="18 位身份证号" /></p>
+    <p><label for="paCode">验证码</label>
+      <input id="paCode" type="text" inputmode="numeric" maxlength="6"
+             onkeydown="if (event.key === 'Enter') submitPatientAuth()" />
+      <button class="btn small" id="paSend" onclick="sendPatientAuthCode()">获取验证码</button></p>
+    <p class="tip" id="paTip"></p>
+    <div class="actions">
+      <button class="btn" onclick="closePatientAuth()">取消</button>
+      <button class="btn primary" onclick="submitPatientAuth()">验证</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 弹窗：挂号时间线 ==================== -->
+<div class="modal-mask" id="timelineMask" style="display:none">
+  <div class="modal wide">
+    <h3>挂号单时间线</h3>
+    <p class="tip" id="tlHead"></p>
+    <table class="data">
+      <thead>
+        <tr><th>时间</th><th>动作</th><th>状态变化</th><th>操作人</th></tr>
+      </thead>
+      <tbody id="tlBody"></tbody>
+    </table>
+    <p class="tip">这张表由数据库触发器写入，应用层改不了。</p>
+    <div class="actions">
+      <button class="btn" onclick="closeTimeline()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 弹窗：加入候补 ==================== -->
+<div class="modal-mask" id="wlMask" style="display:none">
+  <div class="modal">
+    <h3>加入候补</h3>
+    <p class="tip" id="wlWhy"></p>
+    <p><label for="wlName">姓名</label>
+      <input id="wlName" type="text" placeholder="就诊人真实姓名" /></p>
+    <p><label for="wlIdCard">身份证号</label>
+      <input id="wlIdCard" type="text" maxlength="18" placeholder="18 位身份证号" /></p>
+    <p><label for="wlPhone">手机号</label>
+      <input id="wlPhone" type="text" maxlength="11" placeholder="11 位手机号" /></p>
+    <p><label for="wlEmail">邮箱</label>
+      <input id="wlEmail" type="text" placeholder="选填，有空位时发邮件通知你" /></p>
+    <p class="tip">有人退号时会按排队顺序通知，号源为你保留 2 小时。</p>
+    <div class="actions">
+      <button class="btn" onclick="closeWaitlistForm()">取消</button>
+      <button class="btn primary" onclick="submitWaitlist()">排队</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

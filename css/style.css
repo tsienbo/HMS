@@ -1,0 +1,492 @@
+/* ============================================================
+ * 样式表 v3.2 —— 移动优先 + 冷静配色 + 无障碍
+ * ============================================================ */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+  color: #1f2937;
+  background: #f8fafc;
+}
+
+h1 { font-size: 26px; margin: 0 0 8px; }
+h2 { font-size: 22px; margin: 0 0 10px; }
+h3 { font-size: 17px; margin: 0 0 10px; }
+p  { margin: 8px 0; }
+
+/* 统一的页面宽度 */
+.wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 12px;
+}
+
+/* ---------- 顶栏 ---------- */
+.topbar {
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+.topbar .wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  flex-wrap: wrap;
+}
+.logo {
+  font-size: 18px;
+  font-weight: bold;
+  color: #2563eb;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nav {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.nav a {
+  color: #4b5563;
+  cursor: pointer;
+  padding: 8px 2px;
+  border-bottom: 2px solid transparent;
+  font-size: 15px;
+  white-space: nowrap;
+}
+.nav a.on {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+  font-weight: bold;
+}
+.login-info {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.main { padding-top: 20px; padding-bottom: 60px; }
+
+/* ---------- 小字提示 ---------- */
+.tip { color: #6b7280; font-size: 14px; }
+.tip b, .tip strong { color: #374151; }
+
+/* ---------- 按钮 ---------- */
+.btn {
+  font-family: inherit;
+  font-size: 15px;
+  background: #fff;
+  border: 1px solid #c4c9d0;
+  border-radius: 8px;
+  padding: 10px 18px;
+  cursor: pointer;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.3;
+}
+.btn:hover { border-color: #2563eb; color: #2563eb; }
+.btn.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.btn.primary:hover { background: #1d4fd7; color: #fff; }
+.btn.on { border-color: #2563eb; color: #2563eb; }
+.btn.small { padding: 6px 12px; font-size: 14px; min-height: 36px; }
+.btn.huge { padding: 16px 36px; font-size: 20px; border-radius: 10px; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 16px 0;
+}
+
+/* ---------- 卡片 ---------- */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+.card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+}
+.card[onclick] { cursor: pointer; }
+.card[onclick]:hover { border-color: #2563eb; }
+.card.disabled { color: #aaa; background: #fafafa; }
+
+.card-title {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+/* ---------- 小标签 ---------- */
+.tag {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: normal;
+  color: #666;
+  background: #f0f2f5;
+  border-radius: 4px;
+  padding: 2px 8px;
+  margin-left: 4px;
+}
+.tag.green { color: #0a7a3d; background: #e6f5ec; }
+.tag.warn { color: #8a5a00; background: #fdf1d8; }
+.tag.blue { color: #1d4fd7; background: #e8efff; }
+
+/* ---------- 日期按钮那一排 ---------- */
+.dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+.dates.scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.date {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+  min-width: 64px;
+  flex-shrink: 0;
+}
+.date span { display: block; color: #888; font-size: 12px; }
+.date.on { border-color: #2563eb; color: #2563eb; background: #eef3ff; }
+.date.on span { color: #2563eb; }
+.date.off { color: #bbb; background: #fafafa; cursor: not-allowed; }
+.date.off span { color: #ccc; }
+
+/* ---------- 确认页的两栏 ---------- */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 14px 0;
+}
+@media (max-width: 700px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+.box {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+}
+.box.narrow { max-width: 420px; }
+.box p { display: flex; align-items: center; gap: 8px; }
+.box label { width: 80px; flex-shrink: 0; color: #4b5563; font-size: 14px; }
+
+/* ---------- 表单控件 ---------- */
+input, select, textarea {
+  font-family: inherit;
+  font-size: 16px;
+  padding: 8px 10px;
+  border: 1px solid #c4c9d0;
+  border-radius: 6px;
+  background: #fff;
+  min-height: 44px;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
+input[type="number"] { width: 72px; text-align: center; }
+.box input[type="text"], .box input[type="password"] { flex: 1; min-width: 0; }
+
+/* 确认页就诊人表单独样式（和 .box 内表单保持一致） */
+#patientForm p { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+#patientForm label { width: 80px; flex-shrink: 0; color: #4b5563; font-size: 14px; text-align: right; }
+#patientForm input[type="text"] { flex: 1; min-width: 0; }
+
+/* ---------- 筛选条 ---------- */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0;
+}
+.filters input[type="text"] { min-width: 200px; }
+
+/* ---------- 表格 ---------- */
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+}
+table.data th, table.data td {
+  border-bottom: 1px solid #e6e8eb;
+  padding: 10px 10px;
+  text-align: left;
+  font-size: 14px;
+  vertical-align: top;
+}
+table.data th { background: #f0f2f5; font-weight: bold; }
+table.data tr:last-child td { border-bottom: none; }
+
+/* ============================================================
+ * 以下是 v3.2 新增：首页 / 进度条 / 状态徽章 / 标签页 / 成功页
+ * ============================================================ */
+
+/* ---------- 首页 ---------- */
+.hero {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 28px 20px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+.hero h1 { font-size: 28px; color: #1e40af; }
+.hero .sub { color: #64748b; font-size: 16px; margin-bottom: 18px; }
+.hero .assist { margin-top: 14px; color: #64748b; font-size: 14px; }
+
+.shortcut-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+/* ---------- 进度条 ---------- */
+.progress-bar {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 18px;
+}
+.progress-bar .step {
+  flex: 1;
+  text-align: center;
+  padding: 10px 6px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #9ca3af;
+}
+.progress-bar .step span {
+  display: inline-block;
+  width: 24px; height: 24px; line-height: 24px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #6b7280;
+  font-size: 13px;
+  margin-right: 6px;
+}
+.progress-bar .step.on {
+  border-color: #2563eb;
+  color: #2563eb;
+  background: #eef3ff;
+  font-weight: bold;
+}
+.progress-bar .step.on span { background: #2563eb; color: #fff; }
+/* 已完成的步骤：可点回去修改 */
+.progress-bar .step.done { color: #2563eb; cursor: pointer; }
+.progress-bar .step.done span { background: #dbeafe; color: #2563eb; }
+.progress-bar .step.done:hover { border-color: #2563eb; background: #f5f8ff; }
+
+.form-error { color: #dc2626; font-size: 14px; min-height: 1em; margin: 6px 0; }
+
+/* ---------- 状态徽章 ---------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: bold;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+.badge.green { color: #0a7a3d; background: #e6f5ec; }
+.badge.orange { color: #92400e; background: #fef3c7; }
+.badge.grey { color: #4b5563; background: #e5e7eb; }
+
+/* ---------- 医生卡片（新） ---------- */
+.doc-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.doc-card:hover { border-color: #93b4f5; box-shadow: 0 2px 8px rgba(37, 99, 235, .08); }
+.doc-card .avatar {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #1e40af;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: bold;
+  flex-shrink: 0;
+}
+.doc-card .info { flex: 1; }
+.doc-card .name { font-size: 16px; font-weight: bold; }
+.doc-card .meta { color: #6b7280; font-size: 14px; margin: 4px 0; }
+.doc-card .actions { margin-top: 8px; }
+
+/* ---------- 标签页 ---------- */
+.tabs { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+
+/* ---------- 成功页 ---------- */
+.success-box {
+  background: #fff;
+  border: 2px solid #2563eb;
+  border-radius: 12px;
+  padding: 24px 20px;
+  text-align: center;
+}
+.success-box .big-check { font-size: 48px; color: #0a7a3d; margin-bottom: 8px; }
+.success-box h2 { color: #1e40af; }
+.success-box .detail {
+  text-align: left;
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+  font-size: 15px;
+}
+.success-box .detail p { margin: 6px 0; }
+.success-box .detail b { color: #1e40af; }
+
+/* ---------- 预约卡片 ---------- */
+.appt-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.appt-card .header {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  flex-wrap: wrap;
+}
+.appt-card .title { font-size: 16px; font-weight: bold; }
+.appt-card .meta { color: #6b7280; font-size: 14px; margin-top: 6px; }
+.appt-card .actions { margin-top: 12px; }
+
+/* ---------- 搜索高亮 ---------- */
+.search-box {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0;
+}
+.search-box input { flex: 1; min-width: 0; }
+
+/* ---------- 就诊人选择 ---------- */
+.patient-pick {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+.patient-chip {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.patient-chip.on { border-color: #2563eb; background: #eef3ff; color: #2563eb; font-weight: bold; }
+
+/* ---------- 弹窗 ---------- */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 24, 32, .45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+.modal {
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px 22px;
+  width: 100%;
+  max-width: 420px;
+  max-height: 88vh;
+  overflow: auto;
+}
+.modal.wide { max-width: 720px; }
+.modal h3 { font-size: 17px; margin-bottom: 10px; }
+.modal p { display: flex; align-items: center; gap: 8px; }
+.modal label { width: 72px; flex-shrink: 0; color: #4b5563; }
+.modal input[type="text"] { flex: 1; min-width: 0; }
+
+.captcha-q {
+  font-size: 26px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  text-align: center;
+  background: #f5f6f8;
+  border: 1px dashed #c4c9d0;
+  border-radius: 6px;
+  padding: 14px;
+  margin: 12px 0;
+  display: block;
+}
+
+/* ---------- 表格里的操作按钮不要撑高行 ---------- */
+table.data td .btn.small + .btn.small { margin-left: 4px; }
+
+/* ---------- 加载态 ---------- */
+.loading {
+  opacity: .6;
+  pointer-events: none;
+}
+
+/* ---------- 适老化（大字版） ---------- */
+body.big { font-size: 18px; line-height: 1.9; }
+body.big h1 { font-size: 32px; }
+body.big h2 { font-size: 26px; }
+body.big h3 { font-size: 21px; }
+body.big .tip { font-size: 16px; }
+body.big .card-title { font-size: 20px; }
+body.big .tag { font-size: 14px; }
+body.big .btn { font-size: 17px; padding: 12px 22px; }
+body.big .btn.small { font-size: 15px; padding: 6px 14px; }
+body.big input, body.big select { font-size: 17px; padding: 10px 12px; }
+body.big table.data th, body.big table.data td { font-size: 16px; padding: 12px 10px; }
+body.big .date { font-size: 16px; padding: 10px 14px; }
+body.big .logo { font-size: 20px; }
+body.big .nav a { font-size: 17px; }
+body.big .captcha-q { font-size: 32px; }
+body.big .wrap { max-width: 1040px; }
+body.big .progress-bar .step { font-size: 16px; }
+body.big .badge { font-size: 15px; }
+body.big .doc-card .name { font-size: 19px; }
+body.big .doc-card .meta { font-size: 16px; }
+body.big .appt-card .title { font-size: 19px; }
+body.big .appt-card .meta { font-size: 16px; }
