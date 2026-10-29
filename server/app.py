@@ -2046,8 +2046,8 @@ def start_server():
     print("  健康检查   http://%s:%d/api/health\n"
           % (HOST if HOST != "0.0.0.0" else "127.0.0.1", PORT))
 
-    # threaded=True：并发处理请求。挂号防超卖靠的是那条原子 UPDATE，
-    # 单线程跑反而测不出并发问题，所以这里必须开。
+    # threaded=True：并发处理请求。挂号防超卖靠数据库触发器里的排班行锁
+    # （fn_appt_before_insert 的 SELECT … FOR UPDATE），单线程跑反而测不出并发问题，所以这里必须开。
     app.run(host=HOST, port=PORT, threaded=True, debug=False, use_reloader=False)
 
 
