@@ -136,7 +136,7 @@ hospital-registration/
 | 页签 | 说明 | 角色 |
 |---|---|---|
 | 挂号记录 | 按科室 / 日期筛选、关键字搜索；退号；查看挂号时间线；查看完整证件号需填写理由并留痕 | 全部（明文仅管理员 / 审计员） |
-| 排班号源 | 调整每个半天的号源总量；停诊 / 恢复出诊（停诊自动退掉该时段全部待就诊号） | 登录即可 |
+| 排班号源 | 调整每个半天的号源总量；停诊 / 恢复出诊（停诊自动退掉该时段全部待就诊号） | 查看：全部；修改：管理员、窗口 |
 | 候补队列 | 全院当前排队情况 | 全部 |
 | 窗口代约 | 工作人员替电话 / 到院患者挂号 | 管理员、窗口 |
 | 访问日志 | 谁、何时、因何查看了哪位患者的隐私信息 | 管理员、审计员 |
@@ -307,8 +307,8 @@ hospital-registration/
 | POST | `/api/auth/login` · `/logout`，GET `/api/auth/me` | — |
 | GET | `/api/appointments`、`/api/appointments/<id>`、`/<id>/logs` | 登录即可（明文需管理员 / 审计员） |
 | GET | `/api/schedules`、`/api/stats/doctors` | 登录即可 |
-| PATCH | `/api/schedules/<id>/quota` | 登录即可 |
-| POST | `/api/schedules/<id>/toggle` | 登录即可 |
+| PATCH | `/api/schedules/<id>/quota` | 管理员、窗口 |
+| POST | `/api/schedules/<id>/toggle` | 管理员、窗口 |
 | POST | `/api/admin/proxy-booking` | 管理员、窗口 |
 | GET | `/api/admin/waitlist` | 全部角色 |
 | GET | `/api/admin/access-log` · `/outbox` · `/blacklist` | 管理员、审计员 |
@@ -322,7 +322,6 @@ hospital-registration/
 - **实名校验基于「姓名与身份证号未泄露」的假设**。二要素在信息泄露时不足以证明本人，
   真实系统应使用运营商三要素核验、人脸核身或医保电子凭证。
 - **未接入短信平台**，短信验证码流程处于演示模式。
-- **排班号源接口只校验登录、未校验角色**：审计员账号也能调号源、停诊，与「审计员只读」的设计不一致。
 - 医院名称、科室图标、医生简介是前端常量，不入库（它们不参与任何查询或约束）。
 
 ---

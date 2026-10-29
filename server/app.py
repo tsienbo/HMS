@@ -1278,9 +1278,10 @@ def update_quota(sid):
     两条路径互为兜底。
     """
     try:
-        user = get_login_user()
-        if not user:
-            return jsonify(error="未登录或登录已过期，请重新登录"), 401
+        # 改数据只给管理员和窗口；审计员是只读角色
+        user, err = require_role("admin", "desk")
+        if err:
+            return err
 
         total = body_json().get("total")
         # JSON 里的 20 和 20.0 在 JS 里都是同一个数，这里也照此处理；
@@ -1320,9 +1321,10 @@ def toggle_schedule(sid):
     全部退完后 booked_count 自然回到 0。
     """
     try:
-        user = get_login_user()
-        if not user:
-            return jsonify(error="未登录或登录已过期，请重新登录"), 401
+        # 停诊会批量退号，只给管理员和窗口；审计员是只读角色
+        user, err = require_role("admin", "desk")
+        if err:
+            return err
 
         sc_res = query("SELECT * FROM schedules WHERE id = %s", [sid])
         if sc_res.rowcount == 0:
