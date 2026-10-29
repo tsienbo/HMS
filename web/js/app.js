@@ -464,7 +464,13 @@ async function sendPatientAuthCode() {
   btn.disabled = true;
   try {
     const r = await request('POST', '/patient-auth/request', { idCard: idCard }, true);
-    tip.textContent = '验证码已发送至 ' + r.sentTo + '，10 分钟内有效。';
+    if (r.demoCode) {
+      /* 演示模式：服务端还没接短信平台，码发不到手机上，直接填好 */
+      document.getElementById('paCode').value = r.demoCode;
+      tip.textContent = '【演示模式】尚未接入短信平台，验证码 ' + r.demoCode + ' 已自动填好，点「验证」即可。';
+    } else {
+      tip.textContent = '验证码已发送至 ' + r.sentTo + '，10 分钟内有效。';
+    }
     document.getElementById('paCode').focus();
     setTimeout(function () { btn.disabled = false; }, 60000);
   } catch (e) {

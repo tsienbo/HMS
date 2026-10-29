@@ -699,12 +699,12 @@ def patient_auth_request():
         )
         # 码只发到档案里登记的联系方式，请求方自己填的一概不认
         if p["email"]:
-            _send_verification_email(p["email"], code, "身份验证")
+            delivered = _send_verification_email(p["email"], code, "身份验证")
             sent_to = mask_email(p["email"])
         else:
-            _mock_sms(p["phone"], code, "身份验证")
+            delivered = _mock_sms(p["phone"], code, "身份验证")
             sent_to = mask_phone_str(p["phone"])
-        return jsonify(sentTo=sent_to, expireIn=600)
+        return code_response(sent_to, code, delivered)
     except Exception as err:                                  # noqa: BLE001
         app.logger.error("[患者验证-发码] %s", err)
         return jsonify(error="发送失败，请稍后重试"), 500
@@ -794,14 +794,15 @@ def lookup_request_code():
 
         # 发送通知
         sent_to = ""
+        delivered = False
         if row["email"]:
-            _send_verification_email(row["email"], code, "查询预约单 " + row["appointment_no"])
+            delivered = _send_verification_email(row["email"], code, "查询预约单 " + row["appointment_no"])
             sent_to = mask_email(row["email"])
         elif row["phone"]:
-            _mock_sms(row["phone"], code, "查询预约单 " + row["appointment_no"])
+            delivered = _mock_sms(row["phone"], code, "查询预约单 " + row["appointment_no"])
             sent_to = mask_phone_str(row["phone"])
 
-        return jsonify(sentTo=sent_to, expireIn=600), 200
+        return code_response(sent_to, code, delivered)
     except Exception as err:
         app.logger.error("[查询挂号-请求验证码] %s", err)
         return jsonify(error="请求失败，请稍后重试"), 500
@@ -944,7 +945,9 @@ def lookup_cancel():
 
 def _send_verification_email(email, code, purpose):
     """验证码要立刻送达，不走 outbox 队列（那张表的模板约束里也没有验证码）。
-    mailer 没配 SMTP 时自动 dry-run，写进 .mail-outbox.log。"""
+    mailer 没配 SMTP 时自动 dry-run，写进 .mail-outbox.log。
+
+    返回 True = 真的发出去了；False = 只是模拟（dry-run），用户收不到。"""
     import mailer
     try:
         mailer.send_mail(
@@ -953,10 +956,12 @@ def _send_verification_email(email, code, purpose):
         )
     except Exception as err:                                  # noqa: BLE001
         app.logger.error("[验证码邮件] %s", err)
+    return mailer.CONFIG.ready
 
 
 def _mock_sms(phone, code, purpose):
-    """没有短信网关：模拟发送，写进 .mail-outbox.log，演示时打开即可看到。"""
+    """没有短信网关：模拟发送，写进 .mail-outbox.log，演示时打开即可看到。
+    接入真实短信平台前永远返回 False（用户收不到）。"""
     import mailer
     try:
         with mailer.DRY_RUN_LOG.open("a", encoding="utf-8") as f:
@@ -966,6 +971,20 @@ def _mock_sms(phone, code, purpose):
             f.write("【智慧医院】您正在进行「%s」，验证码 %s，10 分钟内有效。\n" % (purpose, code))
     except Exception as err:                                  # noqa: BLE001
         app.logger.error("[模拟短信] %s", err)
+    return False
+
+
+def code_response(sent_to, code, delivered):
+    """发码接口的统一返回。
+
+    ★ 演示模式：还没接短信平台 / 邮箱是 dry-run 时，验证码根本到不了用户手里，
+      这时把验证码直接放在响应里（demoCode），前端显示并自动填好，
+      否则谁都过不了验证。接上真实通道后 delivered 为 True，demoCode 自动消失。
+      想在没接通道时也强制关掉，设环境变量 DEMO_CODE=0。"""
+    body = {"sentTo": sent_to, "expireIn": 600}
+    if not delivered and os.environ.get("DEMO_CODE", "1") != "0":
+        body["demoCode"] = code
+    return jsonify(body)
 
 
 def mask_email(email):
