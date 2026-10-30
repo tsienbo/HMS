@@ -206,7 +206,7 @@ CREATE INDEX idx_schedules_dept ON schedules(dept_id);
 -- ------------------------------------------------------------
 CREATE TABLE appointments (
   id             VARCHAR(16)  PRIMARY KEY,        -- 'A' + YYMMDDHH24MISSMS
-  appointment_no VARCHAR(16)  NOT NULL UNIQUE,    -- 随机预约单号（患者查询用）
+  appointment_no VARCHAR(16)  NOT NULL,           -- 随机预约单号（患者查询用），唯一约束 uq_appt_no 见下
   seq_no         INTEGER      NOT NULL,           -- 该半天的第几个号，由触发器分配
   schedule_id   VARCHAR(32)  NOT NULL,
   doctor_id     VARCHAR(8)   NOT NULL,
@@ -221,6 +221,7 @@ CREATE TABLE appointments (
   updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   cancelled_at  TIMESTAMPTZ,
 
+  CONSTRAINT uq_appt_no UNIQUE (appointment_no),
   CONSTRAINT ck_appt_status CHECK (status IN ('booked','cancelled','completed','no_show')),
   CONSTRAINT ck_appt_cancel_reason CHECK (
     cancel_reason IS NULL OR cancel_reason IN ('patient','admin','closure')

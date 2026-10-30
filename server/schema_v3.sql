@@ -260,6 +260,14 @@ CREATE TABLE IF NOT EXISTS blacklist (
   CONSTRAINT ck_blacklist_reason CHECK (length(btrim(reason)) >= 2)
 );
 
+-- 表若是更早的脚本建的，可能缺身份证格式约束；缺则补上
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_blacklist_idcard') THEN
+    ALTER TABLE blacklist ADD CONSTRAINT ck_blacklist_idcard CHECK (id_card ~ '^[0-9]{17}[0-9X]$');
+  END IF;
+END $$;
+
 -- ------------------------------------------------------------
 -- 6. 候补队列视图（页面直接查这个）
 -- ------------------------------------------------------------
