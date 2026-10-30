@@ -20,7 +20,7 @@ p  { margin: 8px 0; }
 
 /* 统一的页面宽度 */
 .wrap {
-  max-width: 960px;
+  max-width: 1100px;   /* 960 放不下「8 个导航 + 登录信息」和后台 8 列表格，会折行 */
   margin: 0 auto;
   padding: 0 12px;
 }
@@ -421,6 +421,7 @@ table.data tr:last-child td { border-bottom: none; }
   font-weight: bold;
   padding: 4px 10px;
   border-radius: 6px;
+  white-space: nowrap;      /* 「待就诊」等状态不拆成两行 */
 }
 .badge.green { color: #0a7a3d; background: #e6f5ec; }
 .badge.orange { color: #92400e; background: #fef3c7; }
@@ -585,7 +586,7 @@ body.big .date { font-size: 16px; padding: 10px 14px; }
 body.big .logo { font-size: 20px; }
 body.big .nav a { font-size: 17px; }
 body.big .captcha-q { font-size: 32px; }
-body.big .wrap { max-width: 1040px; }
+body.big .wrap { max-width: 1160px; }
 body.big .progress-bar .step { font-size: 16px; }
 body.big .badge { font-size: 15px; }
 body.big .doc-card .name { font-size: 19px; }
