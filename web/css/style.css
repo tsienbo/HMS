@@ -4,6 +4,10 @@
 
 * { box-sizing: border-box; }
 
+/* 隐藏整页滚动条（仍可用滚轮 / 触摸滑动）；表格等内部横向滚动条不受影响 */
+html { scrollbar-width: none; }
+html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
+
 body {
   margin: 0;
   font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
@@ -47,22 +51,32 @@ p  { margin: 8px 0; }
   cursor: pointer;
   white-space: nowrap;
 }
+/* 导航：电脑和手机统一成「图标在上、文字在下」的大按钮；手机上再整体移到屏幕底部 */
 .nav {
   display: flex;
-  gap: 12px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 .nav a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 76px;
+  min-height: 60px;
+  padding: 6px 12px;
+  border-radius: 10px;
   color: #4b5563;
   cursor: pointer;
-  padding: 8px 2px;
-  border-bottom: 2px solid transparent;
   font-size: 15px;
   white-space: nowrap;
 }
+.nav a::before { content: attr(data-icon); font-size: 24px; line-height: 1; }
+.nav a:hover { background: #f3f6fb; color: #2563eb; }
 .nav a.on {
   color: #2563eb;
-  border-bottom-color: #2563eb;
+  background: #eef3ff;
   font-weight: bold;
 }
 .login-info {
@@ -73,35 +87,46 @@ p  { margin: 8px 0; }
   flex-wrap: wrap;
 }
 
-/* 手机：顶栏固定两行 —— 第一行 Logo + 右侧按钮，第二行导航单行横向滑动。
- * 以前导航自动换行，加上登录信息一共三四行，吸顶的顶栏能吃掉小半屏。 */
-@media (max-width: 700px) {
-  .topbar .wrap { gap: 6px 10px; padding-top: 6px; }
-  .logo { order: 1; font-size: 16px; }
-  /* 右侧按钮区可以收缩，和 Logo 挤在同一行；放不下时先截断登录名，而不是整块掉到下一行 */
-  .login-info { order: 2; flex: 1 1 0; min-width: 0; flex-wrap: nowrap; justify-content: flex-end; }
-  .login-info .btn { flex-shrink: 0; }
-  /* 「张明（管理员）」这类登录信息：缩小字号，太长就省略号截断 */
-  .login-info #loginInfo {
-    font-size: 13px;
-    min-width: 0;
-    max-width: 110px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .nav {
-    order: 3;
-    width: 100%;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    gap: 16px;
-  }
-  .nav::-webkit-scrollbar { display: none; }
-}
-
 .main { padding-top: 20px; padding-bottom: 60px; }
+
+/* 手机：顶栏只剩一行（Logo + 大字版 / 退出登录），导航移到屏幕底部，
+ * 四个入口等宽、图标在上文字在下 —— 和常见 App 一样，单手拇指就能点到。 */
+@media (max-width: 700px) {
+  .topbar .wrap { gap: 10px; min-height: 52px; }
+  .logo { font-size: 16px; }
+  .login-info { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; justify-content: flex-end; }
+  .login-info .btn { flex-shrink: 0; }
+  .nav {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 30;                                   /* 低于弹窗（50），弹窗能盖住它 */
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+    background: #fff;
+    border-top: 1px solid #e5e7eb;
+    box-shadow: 0 -2px 8px rgba(15, 23, 42, .06);
+    padding-bottom: env(safe-area-inset-bottom);   /* 全面屏手机底部横条留空 */
+  }
+  .nav a {
+    min-width: 0;
+    min-height: 72px;
+    gap: 4px;
+    padding: 8px 0;
+    border-radius: 0;
+    font-size: 15px;
+    font-weight: 600;
+    border-top: 3px solid transparent;
+    white-space: normal;                          /* 外文标签太长时折成两行，不截断 */
+    text-align: center;
+    line-height: 1.15;
+  }
+  .nav a::before { font-size: 28px; }
+  .nav a:hover { background: none; }
+  .nav a.on { border-top-color: #2563eb; background: none; }
+  /* 给底部导航让出位置，页面最后一行不被挡住 */
+  .main { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+}
 
 /* ---------- 小字提示 ---------- */
 .tip { color: #6b7280; font-size: 14px; }
@@ -348,14 +373,96 @@ table.data tr:last-child td { border-bottom: none; }
   margin-bottom: 16px;
 }
 .hero h1 { font-size: 28px; color: #1e40af; }
-.hero .sub { color: #64748b; font-size: 16px; margin-bottom: 18px; }
-.hero .assist { margin-top: 14px; color: #64748b; font-size: 14px; }
 
-.shortcut-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+/* 首页下方：常用科室 + 就诊须知 */
+.home-sec { margin-bottom: 16px; border-radius: 12px; }
+.dept-quick { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; margin-top: 6px; }
+.dq {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 12px 4px; border: 1px solid #e5e7eb; border-radius: 10px;
+  background: #f8fafc; color: #1f2937; font: inherit; cursor: pointer;
+  min-width: 0; text-align: center; line-height: 1.25; word-break: break-word;
 }
+.dq span { font-size: 28px; line-height: 1; }
+.dq:hover { border-color: #2563eb; background: #eef3ff; }
+.notes { list-style: none; margin: 4px 0 0; padding: 0; }
+.notes li { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px dashed #eef0f3; color: #374151; }
+.notes li:last-child { border-bottom: none; }
+.notes li span { flex: 0 0 auto; }
+.notes li em { font-style: normal; }
+@media (max-width: 900px) { .dept-quick { grid-template-columns: repeat(4, 1fr); } }
+.hero .sub { color: #475569; font-size: 19px; margin-bottom: 18px; }
+/* 给老年人看的提示：字号不小于正文，颜色加深，灰字看不清 */
+.hero .assist { margin-top: 12px; color: #334155; font-size: 19px; line-height: 1.7; }
+body.big .hero .sub { font-size: 21px; }
+body.big .hero .assist { font-size: 22px; }
+/* 电话预约：手机上点一下直接进拨号界面（tel: 链接） */
+.call-line { margin-top: 14px; }
+.btn.call {
+  padding: 12px 28px; font-size: 18px; border-radius: 10px; font-weight: 600;
+  background: #ecfdf5; border-color: #10b981; color: #047857; text-decoration: none;
+}
+.btn.call:hover { background: #d1fae5; border-color: #059669; color: #065f46; }
+.btn.call { white-space: nowrap; }      /* 号码不能拆成两行 */
+
+/* 个人中心切换条：三个按钮一行等宽，手机上也不会出现「上两个下一个」 */
+/* 科室搜索提示（如「急诊无需预约」）：占满科室卡片网格的整行，不挤进某一格 */
+.search-hint { grid-column: 1 / -1; margin: 0; }
+
+/* 步骤条里的文字用 em 包着只为挂多语言标记，不要斜体 */
+.progress-bar .step em { font-style: normal; }
+
+/* 语言下拉：和顶栏按钮同高 */
+.lang-sel { width: auto; min-height: 36px; padding: 4px 8px; font-size: 14px; border-radius: 8px; }
+
+/* 手机号：区号下拉 + 号码输入框并排 */
+.phone-row { display: flex; gap: 8px; flex: 1; min-width: 0; }
+.phone-row select { flex: 0 0 auto; width: 9.5em; min-width: 0; }
+.phone-row input { flex: 1; min-width: 0; }
+
+/* 表单行里的下拉框、电话号码框与输入框一样撑满剩余宽度，不再顶出右边 */
+.box p > select, .modal p > select, #patientForm p > select,
+.box p > input[type="tel"], .modal p > input[type="tel"], #patientForm p > input[type="tel"] { flex: 1; min-width: 0; max-width: 100%; }
+.box label, .modal label, #patientForm label { overflow-wrap: anywhere; }
+
+/* 手机：标签放到输入框上方（外文标签较长，放左边会被挤成两三行） */
+@media (max-width: 700px) {
+  .box p, .modal p, #patientForm p { flex-wrap: wrap; gap: 4px 8px; }
+  .box p > label, .modal p > label, #patientForm p > label { width: 100%; text-align: left; }
+  .box p > select, .modal p > select, #patientForm p > select,
+  .box p > input, .modal p > input, #patientForm p > input, .phone-row { flex: 1 1 100%; }
+  .phone-row select { width: 8.5em; }
+  /* 顶栏：语言下拉与按钮占位后，站名过长时省略号截断 */
+  .topbar .wrap { flex-wrap: nowrap; }          /* 导航已固定在底部，顶栏只剩一行 */
+  .logo { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; }
+  .login-info { flex: 0 1 auto; }
+  .lang-sel { max-width: 6.8em; font-size: 13px; padding: 4px 4px; }
+  #fontToggle { font-size: 13px; padding: 4px 8px; }
+}
+/* 搜索结果里「医生」「科室」两段的小标题，同样占满一整行 */
+.grid-head { grid-column: 1 / -1; margin: 6px 0 0; font-size: 16px; color: #374151; }
+
+.tabs.center-tabs, #mineTabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#mineTabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }   /* 待就诊 / 已完成 / 已取消 / 候补 */
+/* 个人中心两排页签：字号跟标准按钮一样大；外文太长时折成两行而不是被截断 */
+.center-tabs .btn, #mineTabs .btn { font-size: 20px; padding: 14px 6px; line-height: 1.25; white-space: normal; word-break: break-word; }
+body.big .center-tabs .btn, body.big #mineTabs .btn { font-size: 22px; padding: 16px 6px; }
+
+@media (max-width: 700px) {
+  .btn.call { font-size: 19px; padding: 12px 16px; }   /* 老年人最常用的入口，不能比正文小 */
+  body.big .btn.call { font-size: 21px; padding: 14px 16px; }
+  /* 手机上一排 3～4 个，每个只有约 1/3 屏宽：中文四字 + 图标刚好一行 */
+  .center-tabs .btn, #mineTabs .btn { padding: 14px 2px; font-size: 17px; }
+  #mineTabs .btn { font-size: 18px; }
+  body.big .center-tabs .btn { padding: 16px 2px; font-size: 18px; }
+  body.big #mineTabs .btn { padding: 16px 2px; font-size: 20px; }
+}
+
+/* ---------- 后台登录页：整块水平居中 ---------- */
+#page-login { max-width: 440px; margin: 48px auto 0; text-align: center; }
+#page-login .box { margin: 16px auto 0; text-align: left; }
+#page-login .actions { justify-content: center; }
+
 
 /* ---------- 进度条 ---------- */
 .progress-bar {
@@ -570,26 +677,81 @@ table.data td .btn.small + .btn.small { margin-left: 4px; }
   pointer-events: none;
 }
 
-/* ---------- 适老化（大字版） ---------- */
-body.big { font-size: 18px; line-height: 1.9; }
-body.big h1 { font-size: 32px; }
-body.big h2 { font-size: 26px; }
-body.big h3 { font-size: 21px; }
-body.big .tip { font-size: 16px; }
-body.big .card-title { font-size: 20px; }
-body.big .tag { font-size: 14px; }
-body.big .btn { font-size: 17px; padding: 12px 22px; }
-body.big .btn.small { font-size: 15px; padding: 6px 14px; }
-body.big input, body.big select { font-size: 17px; padding: 10px 12px; }
-body.big table.data th, body.big table.data td { font-size: 16px; padding: 12px 10px; }
-body.big .date { font-size: 16px; padding: 10px 14px; }
-body.big .logo { font-size: 20px; }
-body.big .nav a { font-size: 17px; }
-body.big .captcha-q { font-size: 32px; }
-body.big .wrap { max-width: 1160px; }
-body.big .progress-bar .step { font-size: 16px; }
-body.big .badge { font-size: 15px; }
-body.big .doc-card .name { font-size: 19px; }
-body.big .doc-card .meta { font-size: 16px; }
-body.big .appt-card .title { font-size: 19px; }
-body.big .appt-card .meta { font-size: 16px; }
+/* ---------- 标准字号（按用户要求两次上调：每次把当时的大字版尺寸作为标准） ---------- */
+body { font-size: 20px; line-height: 1.9; }
+body h1 { font-size: 36px; }
+body h2 { font-size: 29px; }
+body h3 { font-size: 23px; }
+body .tip { font-size: 18px; }
+body .card-title { font-size: 22px; }
+body .tag { font-size: 16px; }
+body .btn { font-size: 19px; padding: 14px 24px; }
+body .btn.small { font-size: 17px; padding: 7px 16px; }
+body .btn.huge { font-size: 25px; padding: 18px 44px; }   /* 首页「立即挂号」，别被上面通用 .btn 压小 */
+body input, body select { font-size: 19px; padding: 12px 14px; }
+body table.data th, body table.data td { font-size: 18px; padding: 13px 11px; }
+@media (max-width: 860px) {
+  body table.data td { padding: 10px 0 10px 112px; }
+  body table.data td::before { top: 10px; width: 104px; }
+  body table.data td[colspan] { padding-left: 0; }
+}
+body .date { font-size: 18px; padding: 12px 16px; }
+body .logo { font-size: 22px; }
+body .nav a { font-size: 19px; }
+body .nav a::before { font-size: 30px; }
+body .captcha-q { font-size: 36px; }
+body .progress-bar .step { font-size: 18px; }
+body .badge { font-size: 17px; }
+body .doc-card .name { font-size: 21px; }
+body .doc-card .meta { font-size: 18px; }
+body .appt-card .title { font-size: 21px; }
+body .appt-card .meta { font-size: 18px; }
+@media (max-width: 700px) {
+  body .nav a { font-size: 18px; min-height: 88px; }
+  body .nav a::before { font-size: 34px; }
+  body .main { padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
+  body .logo { font-size: 18px; }
+  body h1 { font-size: 30px; }   /* 首页标题在手机上保持一行 */
+  /* 顶栏的语言 / 字号 / 退出按钮不跟着放大，给医院名留位置 */
+  body .topbar select, body .topbar .btn { font-size: 14px; padding: 6px 8px; }
+}
+body .wrap { max-width: 1160px; }
+
+/* ---------- 适老化（大字版）：在标准字号上再放大一档 ---------- */
+body.big { font-size: 22px; line-height: 1.9; }
+body.big h1 { font-size: 40px; }
+body.big h2 { font-size: 32px; }
+body.big h3 { font-size: 25px; }
+body.big .tip { font-size: 20px; }
+body.big .card-title { font-size: 24px; }
+body.big .tag { font-size: 18px; }
+body.big .btn { font-size: 21px; padding: 15px 26px; }
+body.big .btn.small { font-size: 19px; padding: 8px 18px; }
+body.big .btn.huge { font-size: 28px; padding: 20px 48px; }
+body.big input, body.big select { font-size: 21px; padding: 13px 15px; }
+body.big table.data th, body.big table.data td { font-size: 20px; padding: 14px 12px; }
+@media (max-width: 860px) {
+  body.big table.data td { padding: 11px 0 11px 124px; }
+  body.big table.data td::before { top: 11px; width: 116px; }
+  body.big table.data td[colspan] { padding-left: 0; }
+}
+body.big .date { font-size: 20px; padding: 13px 18px; }
+body.big .logo { font-size: 24px; }
+body.big .nav a { font-size: 21px; }
+body.big .nav a::before { font-size: 33px; }
+body.big .captcha-q { font-size: 40px; }
+body.big .progress-bar .step { font-size: 20px; }
+body.big .badge { font-size: 19px; }
+body.big .doc-card .name { font-size: 23px; }
+body.big .doc-card .meta { font-size: 20px; }
+body.big .appt-card .title { font-size: 23px; }
+body.big .appt-card .meta { font-size: 20px; }
+@media (max-width: 700px) {
+  body.big .nav a { font-size: 18px; min-height: 94px; }   /* 每格只有 1/4 屏宽，俄语 «Персонал» 一个词，再大放不下 */
+  body.big .nav a::before { font-size: 36px; }
+  body.big .main { padding-bottom: calc(130px + env(safe-area-inset-bottom)); }
+  body.big .logo { font-size: 17px; }   /* 顶栏按钮变成「标准字号」四个字，医院名让一点 */
+  body.big h1 { font-size: 32px; }   /* 首页标题在手机上保持一行 */
+  /* 顶栏的语言 / 字号 / 退出按钮不跟着放大，给医院名留位置 */
+  body.big .topbar select, body.big .topbar .btn { font-size: 14px; padding: 6px 8px; }
+}

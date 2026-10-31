@@ -41,6 +41,9 @@ EXPECTED_V3_FUNCTIONS = [
 def apply_schema_v3():
     text = V3_FILE.read_text(encoding="utf-8")
     query(text)
+    # v3.5 国际化（多证件、证件键、实名校验函数）紧跟 v3 执行：
+    # fn_verify_identity 与 doc_key 都定义在这里，少了它 v3 的触发器会找不到 doc_key
+    query((HERE / "schema_intl.sql").read_text(encoding="utf-8"))
 
 
 def seed_roles():

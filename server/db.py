@@ -334,9 +334,14 @@ def map_schedule(r):
 
 
 def mask_id_card_str(v):
-    """身份证脱敏：保留前 6 位（地区码）与后 4 位，中间打星。"""
+    """证件号脱敏（与数据库 fn_mask_doc 一致）：18 / 15 位保留前 6 后 4；
+    护照、通行证这类短号码只留首尾各 2 位，免得长度短时露出大半。"""
     v = v or ""
-    return v[:6] + "********" + v[-4:] if len(v) >= 10 else v
+    if len(v) >= 15:
+        return v[:6] + "*" * (len(v) - 10) + v[-4:]
+    if len(v) >= 6:
+        return v[:2] + "*" * (len(v) - 4) + v[-2:]
+    return "*" * len(v)
 
 
 def mask_phone_str(v):

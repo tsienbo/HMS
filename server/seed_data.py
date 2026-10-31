@@ -19,12 +19,21 @@ DEPARTMENTS = [
     {"id": "D03", "name": "儿科", "description": "0-14 岁儿童常见病、生长发育咨询", "location": "门诊楼 1 层北侧（儿童医学中心）"},
     {"id": "D04", "name": "骨科", "description": "骨折、关节疼痛、颈腰椎疾病", "location": "门诊楼 3 层西区"},
     {"id": "D05", "name": "眼科", "description": "视力检查、结膜炎、白内障筛查", "location": "门诊楼 4 层"},
+    # 以下 8 个科室按科室搜索词典（开源医疗知识图谱）里的就诊科室补齐
+    {"id": "D06", "name": "妇产科", "description": "月经不调、妇科炎症、孕期检查与产后复查", "location": "门诊楼 4 层东区"},
+    {"id": "D07", "name": "皮肤科", "description": "湿疹、痤疮、皮炎、荨麻疹、真菌感染", "location": "门诊楼 4 层西区"},
+    {"id": "D08", "name": "耳鼻喉科", "description": "鼻炎、咽喉炎、中耳炎、听力下降", "location": "门诊楼 5 层东区"},
+    {"id": "D09", "name": "口腔科", "description": "牙痛、龋齿、牙周病、口腔溃疡", "location": "门诊楼 5 层西区"},
+    {"id": "D10", "name": "中医科", "description": "中医调理、针灸推拿、慢性病调养", "location": "门诊楼 6 层"},
+    {"id": "D11", "name": "精神心理科", "description": "失眠、焦虑、抑郁、心理咨询", "location": "门诊楼 6 层南侧"},
+    {"id": "D12", "name": "肿瘤科", "description": "肿瘤筛查、放化疗随访、肿瘤综合治疗", "location": "医技楼 3 层"},
+    {"id": "D13", "name": "男科", "description": "前列腺疾病、男性泌尿生殖问题", "location": "门诊楼 5 层南侧"},
 ]
 
 # 后台账号。这里写的是明文，灌库时派生成散列再存，明文不落库。
 # 只有一个账号，所以没有 role 列。
 USERS = [
-    {"id": "U01", "username": "admin", "password": "admin123", "displayName": "张明"},
+    {"id": "U01", "username": "admin", "password": "admin123", "displayName": "系统管理员"},
 ]
 
 # 医生。挂号费由数据库约束锁死在「职称 → 价格」这一档上。
@@ -39,6 +48,22 @@ DOCTORS = [
     {"id": "DR08", "deptId": "D04", "name": "周海涛", "title": "主任医师", "fee": 50},
     {"id": "DR09", "deptId": "D04", "name": "吴磊", "title": "主治医师", "fee": 15},
     {"id": "DR10", "deptId": "D05", "name": "郑晓岚", "title": "副主任医师", "fee": 30},
+    {"id": "DR11", "deptId": "D06", "name": "林雅琴", "title": "主任医师", "fee": 50},
+    {"id": "DR12", "deptId": "D06", "name": "何静", "title": "主治医师", "fee": 15},
+    {"id": "DR13", "deptId": "D07", "name": "许文华", "title": "副主任医师", "fee": 30},
+    {"id": "DR14", "deptId": "D07", "name": "彭悦", "title": "主治医师", "fee": 15},
+    {"id": "DR15", "deptId": "D08", "name": "方立新", "title": "主任医师", "fee": 50},
+    {"id": "DR16", "deptId": "D08", "name": "宋佳", "title": "主治医师", "fee": 15},
+    {"id": "DR17", "deptId": "D09", "name": "唐明远", "title": "副主任医师", "fee": 30},
+    {"id": "DR18", "deptId": "D09", "name": "韩雪", "title": "主治医师", "fee": 15},
+    {"id": "DR19", "deptId": "D10", "name": "黄德昌", "title": "主任医师", "fee": 50},
+    {"id": "DR20", "deptId": "D10", "name": "邓欣", "title": "主治医师", "fee": 15},
+    {"id": "DR21", "deptId": "D11", "name": "曹蕾", "title": "副主任医师", "fee": 30},
+    {"id": "DR22", "deptId": "D11", "name": "罗晨", "title": "主治医师", "fee": 15},
+    {"id": "DR23", "deptId": "D12", "name": "魏东升", "title": "主任医师", "fee": 50},
+    {"id": "DR24", "deptId": "D12", "name": "蒋婷", "title": "主治医师", "fee": 15},
+    {"id": "DR25", "deptId": "D13", "name": "冯志刚", "title": "副主任医师", "fee": 30},
+    {"id": "DR26", "deptId": "D13", "name": "薛凯", "title": "主治医师", "fee": 15},
 ]
 
 # 号源的最小单位就是「上午 / 下午」，不拆 30 分钟一格。

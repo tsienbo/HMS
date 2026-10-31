@@ -48,7 +48,7 @@ from db import (
     pool, query,
 )
 from seed_data import SESSION_TTL_HOURS
-from validators import (check_email, check_id_card, check_name, check_phone,
+from validators import (check_doc_key, check_document, check_email, check_name, check_phone,
                          check_patient, verify_password)
 
 # 生成随机预约单号（10 位大写字母+数字，查重后返回）
@@ -269,11 +269,14 @@ def patient_auth_error():
 
 
 def require_patient_by_id_card(id_card):
-    """(patient_id, 错误响应)。身份证号对应的档案必须在本次请求的凭证里。"""
+    """(patient_id, 错误响应)。证件键对应的档案必须在本次请求的凭证里。
+
+    参数名沿用 idCard：居民身份证就是身份证号，护照是 P:国籍:护照号（见 schema_intl.sql 的 doc_key）。
+    """
     id_card = str(id_card or "").strip().upper()
     if not id_card:
-        return None, (jsonify(error="请提供就诊人身份证号"), 400)
-    r = query("SELECT id FROM patients WHERE id_card = %s", [id_card])
+        return None, (jsonify(error="请提供就诊人证件号"), 400)
+    r = query("SELECT id FROM patients WHERE doc_key = %s", [id_card])
     # 档案不存在也回 401：不让「有没有这个人」从这里被试探出来
     if r.rowcount == 0 or r.rows[0]["id"] not in request_patient_ids():
         return None, patient_auth_error()
@@ -395,6 +398,42 @@ def departments():
         return jsonify(error=msg), status
 
 
+# 整句搜索退化成单字时跳过的口语字（否则「我」「很」也会去匹配疾病名）
+SEARCH_STOP_CHARS = set("我你他她它的了吗呢吧啊呀有没点很太好不舒服难受痛疼痒一直总是老感觉觉得最近今天昨天天些个是在和也都就还又")
+
+
+@app.get("/api/departments/search")
+def departments_search():
+    """按科室名、拼音、疾病或症状找科室。匹配与打分都在数据库函数 fn_search_departments 里。
+
+    返回 {results: [本院科室], others: [本院未开设的科室]}，每项带 hits（命中的词，最多 3 个）。
+    整句没有结果时（如「我肚子不舒服」），先按其中的两字词、再按单个关键字逐个试，
+    取第一个有结果的；「我、有点、不舒服」这类口语字跳过。
+    """
+    q = (request.args.get("q") or "").strip()[:30]
+    if not q:
+        return jsonify(results=[], others=[])
+    try:
+        sql = "SELECT dept_id, other_dept, score, hits FROM fn_search_departments(%s)"
+        rows = query(sql, [q]).rows
+        if not rows and len(q) > 2:
+            pieces = [q[i:i + 2] for i in range(len(q) - 1)]
+            pieces += [ch for ch in q if "一" <= ch <= "鿿" and ch not in SEARCH_STOP_CHARS]
+            for piece in pieces:
+                rows = query(sql, [piece]).rows
+                if rows:
+                    break
+        results = [{"deptId": x["dept_id"], "score": float(x["score"]), "hits": x["hits"]}
+                   for x in rows if x["dept_id"]]
+        others = [{"name": x["other_dept"], "score": float(x["score"]), "hits": x["hits"]}
+                  for x in rows if not x["dept_id"]]
+        return jsonify(results=results, others=others)
+    except Exception as err:                                  # noqa: BLE001
+        app.logger.error("[科室搜索] %s", err)
+        status, msg = db_error(err)
+        return jsonify(error=msg), status
+
+
 @app.get("/api/departments/<dept_id>/doctors")
 def department_doctors(dept_id):
     """某科室的医生，带上「还剩多少号」。
@@ -445,7 +484,8 @@ def patient_mine_get():
             return err
 
         r = query(
-            "SELECT id, name, id_card, phone, email FROM patients WHERE id = %s",
+            """SELECT id, name, id_type, nationality, id_card, doc_key, phone_cc, phone, email
+                 FROM patients WHERE id = %s""",
             [pid],
         )
         if r.rowcount == 0:
@@ -455,7 +495,11 @@ def patient_mine_get():
         return jsonify({
             "id": p["id"],
             "name": p["name"],
+            "idType": p["id_type"],
+            "nationality": p["nationality"] or "",
             "idCard": mask_id_card_str(p["id_card"]),
+            "docKey": p["doc_key"],
+            "phoneCc": p["phone_cc"],
             "phone": mask_phone_str(p["phone"]),
             "email": p["email"] or "",
         })
@@ -477,6 +521,7 @@ def patient_mine_patch():
         body = body_json()
         name = str(body.get("name") or "").strip()
         phone = str(body.get("phone") or "").strip()
+        phone_cc = str(body.get("phoneCc") or "86").strip().lstrip("+")
         email = body.get("email")
         if email is not None:
             email = str(email).strip()
@@ -484,7 +529,7 @@ def patient_mine_patch():
         ok, msg, name = check_name(name)
         if not ok:
             return jsonify(error=msg), 400
-        ok, msg, phone = check_phone(phone)
+        ok, msg, phone = check_phone(phone, phone_cc)
         if not ok:
             return jsonify(error=msg), 400
         ok, msg, email = check_email(email)
@@ -493,10 +538,10 @@ def patient_mine_patch():
 
         upd = query(
             """UPDATE patients
-                  SET name = %s, phone = %s, email = NULLIF(%s, ''), updated_at = NOW()
+                  SET name = %s, phone_cc = %s, phone = %s, email = NULLIF(%s, ''), updated_at = NOW()
                 WHERE id = %s
             RETURNING id""",
-            [name, phone, email, pid],
+            [name, phone_cc, phone, email, pid],
         )
         if upd.rowcount == 0:
             return jsonify(error="未找到该就诊人的档案，请先挂一次号"), 404
@@ -688,21 +733,21 @@ def patient_auth_realname():
         ok, msg, name = check_name(body.get("name"))
         if not ok:
             return jsonify(error=msg), 400
-        ok, msg, id_card = check_id_card(body.get("idCard"))
+        ok, msg, doc = check_document(body.get("idType"), body.get("nationality"), body.get("idCard"))
         if not ok:
             return jsonify(error=msg), 400
 
-        if not verify_identity(name, id_card, "auth"):
-            return jsonify(error="实名校验未通过：姓名与身份证号不匹配，请核对后重试",
+        if not verify_identity(name, doc["docKey"], "auth"):
+            return jsonify(error="实名校验未通过：姓名与证件号不匹配，请核对后重试",
                            code="REALNAME_MISMATCH"), 400
 
-        r = query("SELECT id FROM patients WHERE id_card = %s", [id_card])
+        r = query("SELECT id FROM patients WHERE doc_key = %s", [doc["docKey"]])
         if r.rowcount == 0:
             return jsonify(error="实名校验通过，但还没有就诊档案，挂一次号即可自动建档",
                            code="NO_RECORD"), 404
 
         return jsonify(patientToken=issue_patient_token(r.rows[0]["id"]),
-                       expireDays=PATIENT_TOKEN_DAYS)
+                       expireDays=PATIENT_TOKEN_DAYS, docKey=doc["docKey"])
     except Exception as err:                                  # noqa: BLE001
         app.logger.error("[实名校验] %s", err)
         status, msg = db_error(err)
@@ -716,12 +761,11 @@ def patient_auth_realname():
 @app.post("/api/patient-auth/request")
 def patient_auth_request():
     try:
-        id_card = str(body_json().get("idCard") or "").strip().upper()
-        ok, msg, id_card = check_id_card(id_card)
+        ok, msg, id_card = check_doc_key(body_json().get("idCard"))
         if not ok:
             return jsonify(error=msg), 400
 
-        r = query("SELECT id, phone, email FROM patients WHERE id_card = %s", [id_card])
+        r = query("SELECT id, phone, email FROM patients WHERE doc_key = %s", [id_card])
         if r.rowcount == 0:
             return jsonify(error="未找到该就诊人的档案，挂一次号即可自动建档"), 404
         p = r.rows[0]
@@ -752,9 +796,9 @@ def patient_auth_verify():
         id_card = str(body.get("idCard") or "").strip().upper()
         code = str(body.get("code") or "").strip()
         if not id_card or not code:
-            return jsonify(error="请填写身份证号和验证码"), 400
+            return jsonify(error="请填写证件号和验证码"), 400
 
-        r = query("SELECT id FROM patients WHERE id_card = %s", [id_card])
+        r = query("SELECT id FROM patients WHERE doc_key = %s", [id_card])
         if r.rowcount == 0:
             return jsonify(error="验证码错误"), 400
         pid = r.rows[0]["id"]
@@ -1118,8 +1162,9 @@ def list_appointments():
                 return err
 
         if args.get("idCard"):
+            # 视图里没有证件键，按档案编号过滤：证件键 → 患者
             params.append(str(args["idCard"]).strip().upper())
-            cond.append("id_card = %s")
+            cond.append("patient_id IN (SELECT id FROM patients WHERE doc_key = %s)")
         if args.get("status") and args["status"] != "all":
             # 兼容旧前端传的 active：库里现在的状态叫 booked
             st = "booked" if args["status"] == "active" else args["status"]
@@ -1434,8 +1479,8 @@ def stats_doctors():
 # ============================================================
 
 def verify_identity(name, id_card, purpose):
-    """模拟实名校验（姓名 + 身份证号「二要素」），逻辑在数据库函数 fn_verify_identity 里：
-    人口库里有这个身份证号就比对姓名，没有就模拟查询成功并登记。每次都写校验日志。"""
+    """模拟实名校验（姓名 + 证件「二要素」），逻辑在数据库函数 fn_verify_identity 里：
+    人口库里有这个证件键就比对姓名（外文姓名不分大小写），没有就模拟查询成功并登记。每次都写校验日志。"""
     r = query("SELECT fn_verify_identity(%s, %s, %s, %s) AS ok",
               [name, id_card, purpose, client_ip()])
     return bool(r.rows[0]["ok"])
@@ -1452,23 +1497,26 @@ def resolve_patient(patient, email, trusted=False):
       窗口代约（trusted）同样要过实名校验 —— 防止手误录错名字，
       只是不给工作人员的浏览器发患者凭证。
     """
-    if not verify_identity(patient["name"], patient["idCard"],
+    if not verify_identity(patient["name"], patient["docKey"],
                            "proxy" if trusted else "booking"):
         return None, None, None, (jsonify(
-            error="实名校验未通过：姓名与身份证号不匹配，请核对后重试",
+            error="实名校验未通过：姓名与证件号不匹配，请核对后重试",
             code="REALNAME_MISMATCH"), 400)
 
+    # 证件键 doc_key 是生成列，由证件类型 + 国籍 + 证件号算出；按它判断「是不是同一个人」
     r = query(
-        """INSERT INTO patients (id, name, id_card, phone, email)
+        """INSERT INTO patients (id, name, id_type, nationality, id_card, phone_cc, phone, email)
            VALUES ('P' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
-                   %s, %s, %s, %s)
-           ON CONFLICT (id_card) DO UPDATE
-              SET name  = EXCLUDED.name,
-                  phone = EXCLUDED.phone,
-                  email = COALESCE(EXCLUDED.email, patients.email),
+                   %s, %s, %s, %s, %s, %s, %s)
+           ON CONFLICT (doc_key) DO UPDATE
+              SET name     = EXCLUDED.name,
+                  phone_cc = EXCLUDED.phone_cc,
+                  phone    = EXCLUDED.phone,
+                  email    = COALESCE(EXCLUDED.email, patients.email),
                   updated_at = NOW()
            RETURNING id""",
-        [patient["name"], patient["idCard"], patient["phone"], email],
+        [patient["name"], patient["idType"], patient["nationality"], patient["idCard"],
+         patient["phoneCc"], patient["phone"], email],
     )
     pid = r.rows[0]["id"]
     return pid, (None if trusted else issue_patient_token(pid)), None, None
@@ -1877,13 +1925,13 @@ def admin_blacklist_add():
         reason = str(body.get("reason") or "").strip()
         until = body.get("until") or None
 
-        ok, msg, id_card = check_id_card(id_card)
+        ok, msg, id_card = check_doc_key(id_card)   # 证件键：身份证号，或护照 P:国籍:号码
         if not ok:
             return jsonify(error=msg), 400
         if len(reason) < 2:
             return jsonify(error="请填写拉黑理由"), 400
 
-        pid = query("SELECT id FROM patients WHERE id_card = %s", [id_card])
+        pid = query("SELECT id FROM patients WHERE doc_key = %s", [id_card])
         patient_id = pid.rows[0]["id"] if pid.rowcount else None
 
         query(

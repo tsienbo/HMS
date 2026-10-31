@@ -9,7 +9,7 @@
  *   五、请求层：统一的 request()、患者凭证、实名校验弹窗、全部 API 封装
  *   六、页面切换
  *   七、后台登录 / 注销 / 角色
- *   八、患者端：挂号向导、我的预约、找医生、就诊提醒、我的资料
+ *   八、患者端：挂号向导（含搜医生）、我的预约、就诊提醒、我的资料
  *   九、管理端：页签与挂号记录
  *   十、管理端：排班号源
  *   十一、启动（含表格的移动端卡片标签）
@@ -48,6 +48,14 @@ const DEPT_ICONS = {
   D03: '🧒',
   D04: '🦴',
   D05: '👁️',
+  D06: '🤰',
+  D07: '🧴',
+  D08: '👂',
+  D09: '🦷',
+  D10: '🌿',
+  D11: '🧠',
+  D12: '🎗️',
+  D13: '🚹',
 };
 
 /* 医生擅长方向。本系统没有「按擅长方向搜索」的功能，
@@ -63,14 +71,28 @@ const DOCTOR_INTRO = {
   DR08: '关节置换、脊柱微创、复杂骨折',
   DR09: '骨折复位、运动损伤、腰肌劳损',
   DR10: '白内障、青光眼、眼底病变',
+  DR11: '妇科肿瘤、月经失调、高危妊娠',
+  DR12: '妇科炎症、孕期保健、产后复查',
+  DR13: '湿疹、银屑病、过敏性皮肤病',
+  DR14: '痤疮、皮炎、真菌感染',
+  DR15: '鼻窦炎、咽喉疾病、鼻内镜手术',
+  DR16: '中耳炎、过敏性鼻炎、听力检查',
+  DR17: '牙周病、口腔修复、种植牙咨询',
+  DR18: '龋齿充填、根管治疗、口腔溃疡',
+  DR19: '慢性胃病、失眠调理、针灸推拿',
+  DR20: '体质调理、颈肩腰腿痛、中药调养',
+  DR21: '抑郁、焦虑、睡眠障碍',
+  DR22: '心理咨询、情绪管理、压力调适',
+  DR23: '消化道肿瘤、肺癌综合治疗',
+  DR24: '肿瘤筛查、化疗随访、癌痛管理',
+  DR25: '前列腺炎、前列腺增生',
+  DR26: '男性泌尿感染、性功能障碍',
 };
 
 /* 上午 / 下午 各给一个大概的时间范围。
  * 号源的最小单位就是半天，具体几点看，以到院取号后的现场叫号为准。 */
 const PERIOD_RANGE = { 上午: '08:00-11:00', 下午: '14:00-17:00' };
 
-/* 星期几 */
-const WEEK_LABEL = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
 /* 浏览器本地存储用的两个 key */
 const SESSION_KEY = 'hosp_reg_patient';
@@ -91,10 +113,11 @@ let doctors = [];
 var bookingState = { step: 1, deptId: '', doctorId: '', scheduleId: '', date: '', period: '', patient: null, apt: null };
 
 /* 科室常见程度排序（用于 step1 列表顺序）：内科、儿科、外科、骨科、眼科 */
-var DEPT_ORDER = ['D01', 'D03', 'D02', 'D04', 'D05'];
+var DEPT_ORDER = ['D01', 'D03', 'D02', 'D04', 'D05', 'D06', 'D08', 'D09', 'D07', 'D10', 'D11', 'D12', 'D13'];
 
-/* 科室拼音首字母（用于搜索） */
-var DEPT_PINYIN = { D01: 'NK', D02: 'WK', D03: 'EK', D04: 'GK', D05: 'YK' };
+/* 科室搜索：输入框停顿 250 ms 后再查，避免每敲一个字发一次请求 */
+var deptSearchTimer = null;
+var deptSearchSeq = 0;
 
 /* 各医生的排班缓存，避免重复请求 */
 var allSchedules = {};
@@ -154,16 +177,16 @@ function doctorIntro(id) {
 
 function deptName(id) {
   for (let i = 0; i < departments.length; i++) {
-    if (departments[i].id === id) return departments[i].name;
+    if (departments[i].id === id) return trDeptName(departments[i]);
   }
-  return '未知科室';
+  return '';
 }
 
 function doctorName(id) {
   for (let i = 0; i < doctors.length; i++) {
-    if (doctors[i].id === id) return doctors[i].name;
+    if (doctors[i].id === id) return trDoctorName(doctors[i]);
   }
-  return '未知医生';
+  return '';
 }
 
 function doctorTitle(id) {
@@ -215,14 +238,17 @@ function strToDate(s) {
   return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
 }
 
-/* "2026-10-13" → "周二" */
+/* "2026-10-13" → 当前语言的星期几（周二 / Tue / 火 …） */
 function weekdayLabel(dateStr) {
-  return WEEK_LABEL[strToDate(dateStr).getDay()];
+  try {
+    return new Intl.DateTimeFormat(langTag(), { weekday: 'short' }).format(strToDate(dateStr));
+  } catch (e) {
+    return ['日', '一', '二', '三', '四', '五', '六'][strToDate(dateStr).getDay()];
+  }
 }
 
 /* 从今天起连续 days 天，给「选日期」那一排按钮用。
  * 第一天显示「今天」，第二天显示「明天」，再往后显示星期几。 */
-function statusText(st) { return STATUS_TEXT[st] || st; }
 function statusClass(st) {
   if (st === 'booked') return 'green';
   if (st === 'cancelled' || st === 'closed') return 'grey';
@@ -235,13 +261,18 @@ function daysUntil(dateStr) {
 }
 function fmtCountdown(dateStr) {
   var d = daysUntil(dateStr);
-  if (d < 0) return '已过期';
-  if (d === 0) return '今天就诊';
-  if (d === 1) return '明天就诊';
-  return '还有 ' + d + ' 天就诊';
+  if (d < 0) return t('cd_past');
+  if (d === 0) return t('cd_today');
+  if (d === 1) return t('cd_tomorrow');
+  return t('cd_n', { n: d });
 }
 function suggestArrival(period) {
-  return period === '上午' ? '请于 07:30 前到院取号候诊' : '请于 13:00 前到院取号候诊';
+  return period === '上午' ? t('arrive_am') : t('arrive_pm');
+}
+/* 服务端给的诊室是「诊室 03」，换成当前语言 */
+function colon() { return LANG === 'zh' ? '：' : ': '; }
+function trRoom(room) {
+  return room ? String(room).replace('诊室', t('room')) : t('tbd');
 }
 function getSavedPatients() {
   try {
@@ -254,8 +285,8 @@ function savePatientToHistory(p) {
   try {
     var list = getSavedPatients();
     var cleaned = [];
-    for (var i = 0; i < list.length; i++) { if (list[i].idCard !== p.idCard) cleaned.push(list[i]); }
-    cleaned.unshift({ name: p.name, idCard: p.idCard, phone: p.phone, email: p.email || '' });
+    for (var i = 0; i < list.length; i++) { if (sessKey(list[i]) !== sessKey(p)) cleaned.push(list[i]); }
+    cleaned.unshift(patientRecord(p));
     if (cleaned.length > 5) cleaned.length = 5;
     localStorage.setItem('hosp_reg_patients', JSON.stringify(cleaned));
   } catch (e) {}
@@ -271,8 +302,8 @@ function buildDateRange(days) {
     d.setDate(today.getDate() + i);
 
     let label = weekdayLabel(dateToStr(d));
-    if (i === 0) label = '今天';
-    else if (i === 1) label = '明天';
+    if (i === 0) label = t('today');
+    else if (i === 1) label = t('tomorrow');
 
     list.push({
       date: dateToStr(d),
@@ -331,22 +362,32 @@ function loadSession() {
       /* 存坏了就当没有 */
     }
   }
-  return { name: '', idCard: '', phone: '', email: '' };
+  return { name: '', idType: 'CN_ID', nationality: '', idCard: '', docKey: '', phoneCc: '86', phone: '', email: '' };
+}
+
+/* 就诊人的证件键：服务端按它找档案（居民身份证就是身份证号，护照是 P:国籍:号码）。
+ * 旧版本存的会话没有 docKey，退回身份证号。 */
+function sessKey(s) {
+  if (!s) return '';
+  return s.docKey || String(s.idCard || '').trim().toUpperCase();
+}
+
+/* 存进本机的就诊人字段（会话、常用就诊人都用这一份） */
+function patientRecord(p) {
+  return {
+    name: p.name || '', idType: p.idType || 'CN_ID', nationality: p.nationality || '',
+    idCard: p.idCard || '', docKey: sessKey(p), phoneCc: p.phoneCc || '86', phone: p.phone || '', email: p.email || '',
+  };
 }
 
 /* 存就诊人信息。
  * 合并而不是覆盖：候补表单只填了姓名身份证，不该把上次挂号存的邮箱清掉。 */
 function saveSession(s) {
-  const cur = loadSession();
-  const next = {
-    name: cur.name || '',
-    idCard: cur.idCard || '',
-    phone: cur.phone || '',
-    email: cur.email || '',
-  };
+  const next = patientRecord(loadSession());
   for (const k in s) {
     if (s[k] !== undefined && s[k] !== null) next[k] = s[k];
   }
+  next.docKey = s.docKey || (s.idCard ? docKeyOf(next.idType, next.nationality, next.idCard) : next.docKey);
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify(next));
   } catch (e) {
@@ -381,7 +422,7 @@ async function request(method, url, body, retried) {
   try {
     res = await fetch('/api' + url, opt);
   } catch (e) {
-    throw new Error('连不上服务器，请确认后端已启动');
+    throw new Error(t('e_network'));
   }
 
   const text = await res.text();
@@ -397,32 +438,31 @@ async function request(method, url, body, retried) {
   if (!res.ok) {
     /* 光有中文提示不够用了：验证码要认 428、限流要认 429、
      * 越权要认 403，所以把状态码和 code 一起挂到 error 上。 */
-    const err = new Error((data && data.error) || ('请求失败（HTTP ' + res.status + '）'));
+    const raw = (data && data.error) || ('HTTP ' + res.status);
+    const err = new Error(trError(raw));
+    err.raw = raw;                      /* 中文原文：按关键字判断错误类型时用它 */
     err.status = res.status;
     err.code = (data && data.code) || '';
     err.data = data;
 
     /* 患者端没带有效凭证：弹验证框，验证通过后原样重发一次 */
     if (err.code === 'PATIENT_AUTH_REQUIRED' && !retried) {
-      /* 身份证号：挂号 / 候补在请求体里，查询类在 URL 参数里，都没有就用上次的 */
-      const m = /[?&]idCard=([^&]+)/.exec(url);
-      const idCard = (body && body.patient && body.patient.idCard)
-        || (m ? decodeURIComponent(m[1]) : '') || loadSession().idCard || '';
-      const name = (body && body.patient && body.patient.name) || loadSession().name || '';
-      const ok = await openPatientAuth(idCard, err.message, name);
+      /* 就诊人：挂号 / 候补在请求体里，否则用本机记住的那位 */
+      const who = (body && body.patient) || loadSession();
+      const ok = await openPatientAuth(who, err.message);
       if (ok) return request(method, url, body, true);
     }
     throw err;
   }
   /* 首次建档时服务端会直接发凭证，记到这个就诊人名下 */
-  if (data && data.patientToken && body && body.patient && body.patient.idCard) {
-    savePatientToken(body.patient.idCard, data.patientToken);
+  if (data && data.patientToken && body && body.patient) {
+    savePatientToken(sessKey(body.patient), data.patientToken);
   }
   return data;
 }
 
 /* ---------- 患者凭证 ----------
- * 按身份证号存：{ 身份证号: 凭证 }。凭证 30 天有效，过期了服务端会再要求验证。 */
+ * 按证件键存：{ 证件键: 凭证 }。凭证 30 天有效，过期了服务端会再要求验证。 */
 const PTOKEN_KEY = 'hosp_reg_ptokens';
 
 function loadPatientTokens() {
@@ -450,29 +490,39 @@ function allPatientTokens() {
 
 let patientAuthResolve = null;
 
-/* 打开实名校验框，返回 Promise：校验通过给 true，取消给 false */
-function openPatientAuth(idCard, why, name) {
+/* 打开实名校验框，返回 Promise：校验通过给 true，取消给 false。who 用来预填 */
+function openPatientAuth(who, why) {
+  who = who || {};
   return new Promise(function (resolve) {
     patientAuthResolve = resolve;
-    document.getElementById('paName').value = name || '';
-    document.getElementById('paIdCard').value = idCard || '';
+    document.getElementById('paName').value = who.name || '';
+    document.getElementById('paDoc').innerHTML = docFieldsHtml('pa', who, false);
     document.getElementById('paTip').textContent = why || '';
     document.getElementById('patientAuthMask').style.display = 'flex';
-    document.getElementById(name ? 'paIdCard' : 'paName').focus();
+    document.getElementById(who.name ? 'paIdCard' : 'paName').focus();
   });
 }
 
-/* 姓名 + 身份证号实名校验（模拟公安二要素，比对逻辑在数据库函数 fn_verify_identity） */
+/* 姓名 + 证件实名校验（模拟二要素，比对逻辑在数据库函数 fn_verify_identity） */
 async function submitPatientAuth() {
-  const name = document.getElementById('paName').value.trim();
-  const idCard = document.getElementById('paIdCard').value.trim().toUpperCase();
   const tip = document.getElementById('paTip');
-  if (!name || !idCard) { tip.textContent = '请填写姓名和身份证号'; return; }
+  const nm = readName('paName');
+  if (!nm.ok) { tip.textContent = nm.msg; return; }
+  const doc = readDoc('pa');
+  if (!doc.ok) { tip.textContent = doc.msg; return; }
   const btn = document.getElementById('paSubmit');
   btn.disabled = true;
   try {
-    const r = await request('POST', '/patient-auth/realname', { name: name, idCard: idCard }, true);
-    savePatientToken(idCard, r.patientToken);
+    const r = await request('POST', '/patient-auth/realname', {
+      name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard,
+    }, true);
+    savePatientToken(doc.docKey, r.patientToken);
+    /* 校验通过的就诊人记为本机当前就诊人，「我的预约」等页面直接按他查 */
+    const cur = loadSession();
+    if (sessKey(cur) !== doc.docKey) {
+      saveSession({ name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard,
+                    docKey: doc.docKey, phoneCc: '86', phone: '', email: '' });
+    }
     finishPatientAuth(true);
   } catch (e) {
     tip.textContent = e.message;
@@ -511,6 +561,11 @@ async function apiMe() {
 
 async function apiDepartments() {
   return request('GET', '/departments');
+}
+
+/* 按科室名 / 拼音 / 疾病 / 症状搜科室（数据库函数 fn_search_departments） */
+async function apiSearchDepartments(q) {
+  return request('GET', '/departments/search?q=' + encodeURIComponent(q));
 }
 
 async function apiDoctors() {
@@ -678,6 +733,147 @@ async function apiAppointmentLogs(id) {
 }
 
 
+
+/* ============================================================
+ * 五（附）、证件与手机号表单 —— 挂号、候补、实名校验、我的资料共用
+ *
+ * 支持居民身份证、护照、外国人永居证、港澳 / 台湾通行证、港澳台居住证。
+ * 这里的校验与服务端 validators.check_document、数据库 fn_doc_valid 同一套规则，
+ * 前端先查一遍只为当场用患者的语言提示，最终以服务端和数据库为准。
+ * ============================================================ */
+
+const ID_TYPES = ['CN_ID', 'PASSPORT', 'FRP', 'HK_MO', 'TW', 'HMT_RES'];
+const ID_WEIGHTS = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
+
+function gb11643Ok(v) {
+  if (!/^\d{17}[\dX]$/.test(v)) return false;
+  let sum = 0;
+  for (let i = 0; i < 17; i++) sum += Number(v[i]) * ID_WEIGHTS[i];
+  return '10X98765432'[sum % 11] === v[17];
+}
+
+/* 证件键（与数据库 fn_doc_key 一致） */
+function docKeyOf(type, nat, no) {
+  no = String(no || '').toUpperCase();
+  return type === 'PASSPORT' ? 'P:' + String(nat || '').toUpperCase() + ':' + no : no;
+}
+
+function needNationality(type) { return type === 'PASSPORT' || type === 'FRP'; }
+
+/* 国籍下拉：按当前语言的国家名排序 */
+function nationalityOptions(sel) {
+  const list = COUNTRIES.map(function (c) { return [c[0], countryName(c[0])]; });
+  list.sort(function (a, b) { return a[1].localeCompare(b[1], langTag()); });
+  let h = '<option value="">' + escapeHtml(t('choose')) + '</option>';
+  list.forEach(function (c) {
+    h += '<option value="' + c[0] + '"' + (c[0] === sel ? ' selected' : '') + '>' + escapeHtml(c[1]) + '</option>';
+  });
+  return h;
+}
+
+/* 区号下拉：+86 等常用的排前面，同一个区号的国家合并显示 */
+function phoneCcOptions(sel) {
+  const byCc = {};
+  const order = [];
+  COUNTRIES.forEach(function (c) {
+    if (!byCc[c[1]]) { byCc[c[1]] = []; order.push(c[1]); }
+    byCc[c[1]].push(countryName(c[0]));
+  });
+  let h = '';
+  order.forEach(function (cc) {
+    h += '<option value="' + cc + '"' + (cc === (sel || '86') ? ' selected' : '') + '>+' + cc + ' ' + escapeHtml(byCc[cc].join(' / ')) + '</option>';
+  });
+  return h;
+}
+
+/* 证件三件套（类型 / 国籍 / 号码），withPhone 时再加手机号（区号 + 号码） */
+function docFieldsHtml(prefix, v, withPhone) {
+  v = v || {};
+  const type = v.idType || 'CN_ID';
+  let h = '<p><label for="' + prefix + 'IdType">' + t('id_type') + '</label><select id="' + prefix + 'IdType" onchange="onDocTypeChange(\'' + prefix + '\')">';
+  ID_TYPES.forEach(function (k) {
+    h += '<option value="' + k + '"' + (k === type ? ' selected' : '') + '>' + escapeHtml(t('idt_' + k)) + '</option>';
+  });
+  h += '</select></p>';
+  h += '<p id="' + prefix + 'NatRow"' + (needNationality(type) ? '' : ' style="display:none"') + '><label for="' + prefix + 'Nat">' + t('nationality') + '</label>'
+     + '<select id="' + prefix + 'Nat">' + nationalityOptions(v.nationality || '') + '</select></p>';
+  h += '<p><label for="' + prefix + 'IdCard">' + t('id_no') + '</label><input id="' + prefix + 'IdCard" type="text" maxlength="20" autocapitalize="characters" autocomplete="off"'
+     + ' placeholder="' + escapeHtml(t('ph_' + type)) + '" value="' + escapeHtml(v.idCard || '') + '" /></p>';
+  if (withPhone) h += phoneFieldHtml(prefix, v);
+  return h;
+}
+
+function phoneFieldHtml(prefix, v) {
+  v = v || {};
+  const cc = v.phoneCc || '86';
+  return '<p><label for="' + prefix + 'Phone">' + t('phone') + '</label><span class="phone-row">'
+       + '<select id="' + prefix + 'PhoneCc" aria-label="' + escapeHtml(t('phone_cc')) + '" onchange="onPhoneCcChange(\'' + prefix + '\')">' + phoneCcOptions(cc) + '</select>'
+       + '<input id="' + prefix + 'Phone" type="tel" maxlength="11" placeholder="' + escapeHtml(t(cc === '86' ? 'phone_ph_cn' : 'phone_ph_intl')) + '" value="' + escapeHtml(v.phone || '') + '" />'
+       + '</span></p>';
+}
+
+function onDocTypeChange(prefix) {
+  const type = document.getElementById(prefix + 'IdType').value;
+  document.getElementById(prefix + 'NatRow').style.display = needNationality(type) ? '' : 'none';
+  document.getElementById(prefix + 'IdCard').placeholder = t('ph_' + type);
+}
+
+function onPhoneCcChange(prefix) {
+  const cc = document.getElementById(prefix + 'PhoneCc').value;
+  document.getElementById(prefix + 'Phone').placeholder = t(cc === '86' ? 'phone_ph_cn' : 'phone_ph_intl');
+}
+
+/* 读出并校验证件：{ok, msg, idType, nationality, idCard, docKey} */
+function readDoc(prefix) {
+  const type = document.getElementById(prefix + 'IdType').value;
+  const no = document.getElementById(prefix + 'IdCard').value.replace(/[\s-]/g, '').toUpperCase();
+  let nat = needNationality(type) ? document.getElementById(prefix + 'Nat').value : '';
+  let ok;
+  if (type === 'CN_ID') ok = gb11643Ok(no) && !/^(81|82|83|9)/.test(no);
+  else if (type === 'HMT_RES') ok = gb11643Ok(no) && /^8[123]0000/.test(no);
+  else if (type === 'FRP') ok = (gb11643Ok(no) && no[0] === '9') || /^[A-Z]{3}\d{12}$/.test(no);
+  else if (type === 'HK_MO') ok = /^[HM]\d{8}(\d{2})?$/.test(no);
+  else if (type === 'TW') ok = /^\d{8}(\d{2})?$/.test(no);
+  else ok = /^[A-Z0-9]{5,14}$/.test(no);
+  if (!no || !ok) return { ok: false, msg: t('v_doc_' + type) };
+  if (needNationality(type) && !nat) return { ok: false, msg: t('v_nat') };
+  return { ok: true, idType: type, nationality: nat, idCard: no, docKey: docKeyOf(type, nat, no) };
+}
+
+function readPhone(prefix) {
+  const cc = document.getElementById(prefix + 'PhoneCc').value;
+  const phone = document.getElementById(prefix + 'Phone').value.replace(/[\s-]/g, '');
+  if (!phone) return { ok: false, msg: t('v_phone_empty') };
+  if (cc === '86' ? !/^1[3-9]\d{9}$/.test(phone) : !/^\d{4,11}$/.test(phone)) {
+    return { ok: false, msg: t(cc === '86' ? 'v_phone_cn' : 'v_phone_intl') };
+  }
+  return { ok: true, phoneCc: cc, phone: phone };
+}
+
+/* 姓名：中文 2–20 字，或证件上的拉丁字母写法；多余空格合并 */
+function readName(id) {
+  const name = document.getElementById(id).value.trim().replace(/\s+/g, ' ');
+  if (!name) return { ok: false, msg: t('v_name_empty') };
+  const zh = /^[一-龥·]{2,20}$/.test(name);
+  const latin = /^[A-Za-zÀ-ɏ][A-Za-zÀ-ɏ .'\-]{0,48}[A-Za-zÀ-ɏ.]$/.test(name);
+  if (!zh && !latin) return { ok: false, msg: t('v_name') };
+  return { ok: true, name: name };
+}
+
+function readEmail(id) {
+  const email = document.getElementById(id).value.trim();
+  if (email && !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email)) return { ok: false, msg: t('v_email') };
+  return { ok: true, email: email };
+}
+
+/* 本机记住的就诊人显示成「姓名 · 打码的证件号」 */
+function maskDoc(no) {
+  no = String(no || '');
+  if (no.length >= 15) return no.slice(0, 6) + '****' + no.slice(-4);
+  if (no.length >= 6) return no.slice(0, 2) + '****' + no.slice(-2);
+  return no;
+}
+
 /* ============================================================
  * 六、页面切换
  *
@@ -688,31 +884,57 @@ async function apiAppointmentLogs(id) {
  *   page-admin   管理后台
  * ============================================================ */
 
+let currentPage = 'home';
 function showPage(name) {
-  var pages = ['home', 'mine', 'booking', 'find', 'reminders', 'profile', 'admin', 'login'];
+  currentPage = name;
+  var pages = ['home', 'mine', 'booking', 'reminders', 'profile', 'admin', 'login'];
   for (var i = 0; i < pages.length; i++) {
     var el = document.getElementById('page-' + pages[i]);
     if (!el) continue;
     el.style.display = (pages[i] === name) ? '' : 'none';
   }
 
-  /* 顶栏高亮当前这一项 */
-  var navs = ['navHome', 'navMine', 'navBooking', 'navFind', 'navReminders', 'navProfile', 'navAdmin'];
-  var navMap = { home: 'navHome', mine: 'navMine', booking: 'navBooking', find: 'navFind', reminders: 'navReminders', profile: 'navProfile', admin: 'navAdmin' };
+  /* 顶栏高亮当前这一项：我的预约 / 就诊提醒 / 我的资料 同属「个人中心」，登录页算「后台管理」 */
+  var navs = ['navHome', 'navBooking', 'navCenter', 'navAdmin'];
+  var navMap = { home: 'navHome', booking: 'navBooking',
+                 mine: 'navCenter', reminders: 'navCenter', profile: 'navCenter',
+                 admin: 'navAdmin', login: 'navAdmin' };
   for (var j = 0; j < navs.length; j++) {
     var n = document.getElementById(navs[j]);
     if (n) n.className = (navMap[name] === navs[j]) ? 'on' : '';
   }
 
+  /* 个人中心的标题与切换条：只在这三页显示，并高亮当前页 */
+  var inCenter = name === 'mine' || name === 'reminders' || name === 'profile';
+  document.getElementById('centerHead').style.display = inCenter ? '' : 'none';
+  var ct = { mine: 'ctMine', reminders: 'ctReminders', profile: 'ctProfile' };
+  for (var k in ct) document.getElementById(ct[k]).className = 'btn' + (k === name ? ' on' : '');
+
+  if (name === 'home') renderHome();
   if (name === 'mine') renderMine();
   if (name === 'reminders') renderReminders();
   if (name === 'profile') renderProfile();
-  if (name === 'find') renderFind();
   window.scrollTo(0, 0);
 }
 
 function goHome() {
   showPage('home');
+}
+
+/* 首页「常用科室」：7 个最常挂的科室 + 「全部科室」，点科室直接跳到挂号第 2 步选医生 */
+const HOME_DEPTS = ['D01', 'D03', 'D02', 'D06', 'D04', 'D05', 'D09'];
+function renderHome() {
+  var box = document.getElementById('homeDepts');
+  if (!box) return;
+  var html = '';
+  for (var i = 0; i < HOME_DEPTS.length; i++) {
+    var d = null;
+    for (var j = 0; j < departments.length; j++) { if (departments[j].id === HOME_DEPTS[i]) { d = departments[j]; break; } }
+    if (!d) continue;
+    html += '<button class="dq" onclick="startBookingWithDept(\'' + d.id + '\', \'\')"><span>' + deptIcon(d.id) + '</span>' + escapeHtml(trDeptName(d)) + '</button>';
+  }
+  html += '<button class="dq" onclick="startBooking(true)"><span>🔍</span>' + escapeHtml(t('all_depts')) + '</button>';
+  box.innerHTML = html;
 }
 
 /* 点「管理后台」：没登录先去登录页 */
@@ -779,62 +1001,79 @@ function maskPhone(s) {
   return s.slice(0, 3) + '****' + s.slice(-4);
 }
 
-/* ---------- 我的资料 ---------- */
-async function renderProfile() {
-  var sess = loadSession();
-  if (sess && sess.idCard) {
-    document.getElementById('pIdCardLook').value = sess.idCard;
-    await loadProfile();
-  } else {
-    document.getElementById('pIdCardLook').value = '';
-    document.getElementById('profileForm').style.display = 'none';
-    document.getElementById('profileTip').textContent = '请输入身份证号加载资料';
-  }
+/* ---------- 我的资料 ----------
+ * 上半部分填证件（类型 / 国籍 / 号码）加载档案，下半部分改姓名、手机号、邮箱。 */
+function renderProfile() {
+  const sess = loadSession();
+  const box = document.getElementById('profileBox');
+  box.innerHTML = '<div class="box narrow">'
+    + docFieldsHtml('pl', sess, false)
+    + '<div class="actions"><button class="btn" onclick="loadProfile()">' + t('load') + '</button></div>'
+    + '<p class="tip" id="profileTip"></p>'
+    + '<div id="profileForm" style="display:none">'
+    + '<p><label for="pNameEdit">' + t('name') + '</label><input id="pNameEdit" type="text" maxlength="50" /></p>'
+    + '<p><label for="pIdCardEdit">' + t('id_no') + '</label><input id="pIdCardEdit" type="text" readonly style="background:#f3f4f6;color:#6b7280" /></p>'
+    + phoneFieldHtml('pe', {})
+    + '<p><label for="pEmailEdit">' + t('email') + '</label><input id="pEmailEdit" type="text" maxlength="120" placeholder="' + escapeHtml(t('email_ph')) + '" /></p>'
+    + '<div class="actions"><button class="btn primary" onclick="saveProfile()">' + t('save') + '</button>'
+    + '<button class="btn" onclick="clearLocalPatient()">' + t('switch_patient') + '</button>'
+    + '<span class="tip" id="profileSaveTip"></span></div>'
+    + '</div></div>';
+  if (sessKey(sess)) loadProfile();
+  else document.getElementById('profileTip').textContent = t('prof_need');
 }
 async function loadProfile() {
-  var idCard = document.getElementById('pIdCardLook').value.trim();
-  var tip = document.getElementById('profileTip');
-  var form = document.getElementById('profileForm');
-  if (!idCard) { tip.textContent = '请输入身份证号'; form.style.display = 'none'; return; }
-  tip.textContent = '加载中…';
+  const tip = document.getElementById('profileTip');
+  const form = document.getElementById('profileForm');
+  const doc = readDoc('pl');
+  if (!doc.ok) { tip.textContent = doc.msg; form.style.display = 'none'; return; }
+  tip.textContent = t('loading');
   try {
-    var p = await apiPatientMine(idCard);
+    const p = await apiPatientMine(doc.docKey);
     document.getElementById('pNameEdit').value = p.name || '';
-    document.getElementById('pIdCardEdit').value = maskIdCard(p.idCard || idCard);
-    document.getElementById('pPhoneEdit').value = p.phone || '';
+    document.getElementById('pIdCardEdit').value = t('idt_' + (p.idType || doc.idType)) + ' · ' + (p.idCard || maskDoc(doc.idCard));
+    document.getElementById('pePhoneCc').innerHTML = phoneCcOptions(p.phoneCc || '86');
+    document.getElementById('pePhone').value = '';
+    document.getElementById('pePhone').placeholder = p.phone || '';
     document.getElementById('pEmailEdit').value = p.email || '';
     form.style.display = '';
     tip.textContent = '';
   } catch (e) {
-    tip.textContent = '未找到该身份证号的就诊人记录，您可以先挂号，系统会自动创建。';
+    tip.textContent = e.status === 404 ? t('prof_notfound') : e.message;
     form.style.display = 'none';
   }
 }
 async function saveProfile() {
-  var idCard = document.getElementById('pIdCardLook').value.trim();
-  var name = document.getElementById('pNameEdit').value.trim();
-  var phone = document.getElementById('pPhoneEdit').value.trim();
-  var email = document.getElementById('pEmailEdit').value.trim();
-  var tip = document.getElementById('profileSaveTip');
-  if (!idCard) { tip.textContent = '请先输入身份证号'; return; }
-  if (!name) { tip.textContent = '姓名不能为空'; return; }
-  if (!phone) { tip.textContent = '手机号不能为空'; return; }
-  tip.textContent = '保存中…';
+  const tip = document.getElementById('profileSaveTip');
+  const doc = readDoc('pl');
+  if (!doc.ok) { tip.textContent = doc.msg; return; }
+  const nm = readName('pNameEdit');
+  if (!nm.ok) { tip.textContent = nm.msg; return; }
+  /* 手机号框留空表示不改：占位文字是打码后的原号码 */
+  const phoneBox = document.getElementById('pePhone');
+  if (!phoneBox.value.trim()) { tip.textContent = t('v_phone_empty'); phoneBox.focus(); return; }
+  const ph = readPhone('pe');
+  if (!ph.ok) { tip.textContent = ph.msg; return; }
+  const em = readEmail('pEmailEdit');
+  if (!em.ok) { tip.textContent = em.msg; return; }
+  tip.textContent = t('saving');
   try {
-    await apiUpdatePatient(idCard, { name: name, phone: phone, email: email });
-    saveSession({ name: name, idCard: idCard, phone: phone, email: email });
-    tip.textContent = '已保存';
+    await apiUpdatePatient(doc.docKey, { name: nm.name, phoneCc: ph.phoneCc, phone: ph.phone, email: em.email });
+    saveSession({ name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard, docKey: doc.docKey,
+                  phoneCc: ph.phoneCc, phone: ph.phone, email: em.email });
+    tip.textContent = t('saved');
     setTimeout(function () { tip.textContent = ''; }, 2000);
   } catch (e) {
-    tip.textContent = e.message || '保存失败';
+    tip.textContent = e.message || t('fail');
   }
 }
 
-/* 顶栏右上角：登录了就显示是谁，什么角色，没登录就空着。
+/* 管理后台页顶部：登录了就显示是谁、什么角色；顶栏只留「退出登录」按钮。
  * 角色显示出来是有用的 —— 窗口人员看到「窗口」就知道自己看不到审计日志，
  * 不用去点一个必然 403 的按钮。 */
 function showLoginInfo() {
-  var el = document.getElementById('loginInfo');
+  /* 顶栏只放「退出登录」按钮；当前账号与角色显示在管理后台页内，不占顶栏位置 */
+  var el = document.getElementById('adminWho');
   var logoutBtn = document.getElementById('logoutBtn');
   if (!currentUser) {
     if (el) el.textContent = '';
@@ -842,7 +1081,7 @@ function showLoginInfo() {
     return;
   }
   var roleName = ROLE_LABEL[currentUser.role] || currentUser.role || '管理员';
-  if (el) el.textContent = currentUser.displayName + '（' + roleName + '）';
+  if (el) el.textContent = '当前账号：' + currentUser.username + ' · ' + roleName;
   if (logoutBtn) logoutBtn.style.display = '';
 }
 
@@ -872,13 +1111,15 @@ function canWrite() {
 
 
 /* ============================================================
- * 八、患者端：挂号向导、我的预约、找医生、就诊提醒、我的资料
+ * 八、患者端：挂号向导（含搜医生）、我的预约、就诊提醒、我的资料
  * ============================================================ */
 
-function startBooking() {
+/* focusSearch：从首页「找医生」进来时把光标放进搜索框 */
+function startBooking(focusSearch) {
   bookingState = { step: 1, deptId: '', doctorId: '', scheduleId: '', date: '', period: '', patient: loadSession(), apt: null };
   showPage('booking');
   renderBookingStep();
+  if (focusSearch === true) { var box = document.getElementById('deptSearch'); if (box) box.focus(); }
 }
 function startBookingWithDept(deptId, doctorId) {
   bookingState = { step: 2, deptId: deptId, doctorId: doctorId, scheduleId: '', date: '', period: '', patient: loadSession(), apt: null };
@@ -896,7 +1137,7 @@ function setProgress(step) {
     /* 已完成的步骤可以点回去改；挂号成功后（第 4 步）就不再回退了 */
     var back = n < step && step < 4;
     s.onclick = back ? goToStep.bind(null, n) : null;
-    s.title = back ? '返回修改' : '';
+    s.title = back ? t('step_back_title') : '';
   }
 }
 function goToStep(n) {
@@ -915,50 +1156,100 @@ function renderBookingStep() {
 
 /* ---------- Step 1 选科室 ---------- */
 function renderStep1(body) {
-  var html = `<div class="search-box"><input type="text" id="deptSearch" placeholder="搜索科室（如：内科 / NK）" oninput="filterDepts(this.value)" /><button class="btn" onclick="filterDepts(document.getElementById('deptSearch').value)">搜索</button></div>`;
-  html += `<div class="tip">不知道挂什么科？按症状快速选择：</div>`;
-  html += `<div class="actions">`;
-  html += `<button class="btn small" onclick="quickDept('D01')">发烧 / 感冒 / 高血压 → 内科</button>`;
-  html += `<button class="btn small" onclick="quickDept('D02')">外伤 / 术后复查 → 外科</button>`;
-  html += `<button class="btn small" onclick="quickDept('D03')">儿童常见病 → 儿科</button>`;
-  html += `<button class="btn small" onclick="quickDept('D04')">关节疼痛 / 骨折 → 骨科</button>`;
-  html += `<button class="btn small" onclick="quickDept('D05')">视力问题 → 眼科</button>`;
-  html += `</div>`;
-  html += `<div id="deptList" class="cards"></div>`;
+  var html = '<div class="search-box"><input type="text" id="deptSearch" placeholder="' + escapeHtml(t('search_ph')) + '" oninput="filterDepts(this.value)" /><button class="btn" onclick="filterDepts(document.getElementById(\'deptSearch\').value)">' + t('search') + '</button></div>';
+  if (t('search_lang_note')) html += '<p class="tip">' + escapeHtml(t('search_lang_note')) + '</p>';
+  html += '<div id="deptList" class="cards"></div>';
   body.innerHTML = html;
   filterDepts('');
 }
 function filterDepts(q) {
+  q = (q || '').trim();
+  clearTimeout(deptSearchTimer);
+  if (!q) { renderDeptCards(DEPT_ORDER.map(function (id) { return { deptId: id, hits: [] }; }), [], ''); return; }
+  deptSearchTimer = setTimeout(function () { searchDepts(q); }, 250);
+}
+/* 按姓名（含拼音）或擅长方向找医生（医生只有二十几位，前端直接匹配，不用走接口） */
+function searchDoctors(q) {
+  var out = [], ql = q.toLowerCase();
+  for (var i = 0; i < doctors.length; i++) {
+    var d = doctors[i];
+    if (d.name.indexOf(q) >= 0 || (DOCTOR_INTRO[d.id] || '').indexOf(q) >= 0
+        || (DOCTOR_PINYIN[d.id] || '').toLowerCase().indexOf(ql) >= 0
+        || (ql.length >= 3 && trIntro(d.id).toLowerCase().indexOf(ql) >= 0)) out.push(d);
+  }
+  return out;
+}
+/* 用当前语言的科室名匹配（Dermatology、皮膚科 …）：词典是中文的，外文科室名在前端补上 */
+function searchDeptNames(q) {
+  var ql = q.toLowerCase(), out = [];
+  if (LANG === 'zh' || ql.length < 2) return out;
+  for (var i = 0; i < departments.length; i++) {
+    if (trDeptName(departments[i]).toLowerCase().indexOf(ql) >= 0) out.push({ deptId: departments[i].id, hits: [], score: 1e9 });
+  }
+  return out;
+}
+async function searchDepts(q) {
+  var seq = ++deptSearchSeq;
+  var res;
+  try {
+    res = await apiSearchDepartments(q);
+  } catch (e) {
+    /* 接口不可用时退回到只按科室名匹配 */
+    res = { results: departments.filter(function (d) { return d.name.indexOf(q) >= 0; })
+                                 .map(function (d) { return { deptId: d.id, hits: [] }; }), others: [] };
+  }
+  if (seq !== deptSearchSeq) return;          /* 已经有更新的搜索了，丢弃旧结果 */
+  var local = searchDeptNames(q), seen = {};
+  local.forEach(function (x) { seen[x.deptId] = 1; });
+  var merged = local.concat((res.results || []).filter(function (x) { return !seen[x.deptId]; }));
+  renderDeptCards(merged, res.others || [], q);
+}
+/* items: [{deptId, hits}]；others: 本院未开设的科室 [{name, hits, score}] */
+function renderDeptCards(items, others, q) {
   var list = document.getElementById('deptList');
   if (!list) return;
-  q = (q || '').toLowerCase().replace(/\s/g, '');
-  var items = [];
-  for (var i = 0; i < DEPT_ORDER.length; i++) {
-    var d = null;
-    for (var j = 0; j < departments.length; j++) { if (departments[j].id === DEPT_ORDER[i]) { d = departments[j]; break; } }
-    if (!d) continue;
-    var match = !q;
-    if (q) {
-      if (d.name.indexOf(q) >= 0) match = true;
-      var py = (DEPT_PINYIN[d.id] || '').toLowerCase();
-      if (py.indexOf(q) >= 0) match = true;
-      if (d.desc.toLowerCase().indexOf(q) >= 0) match = true;
-    }
-    if (match) items.push(d);
-  }
   var html = '';
+  var docs = q ? searchDoctors(q) : [];
+  /* 搜的是医生姓名（如「张建国」）时只列医生，不再拿姓名去匹配疾病 / 科室 */
+  for (var k0 = 0; k0 < docs.length; k0++) {
+    if (docs[k0].name.indexOf(q) >= 0 || (DOCTOR_PINYIN[docs[k0].id] || '').toLowerCase().indexOf(q.toLowerCase()) >= 0) { items = []; others = []; break; }
+  }
+  if (docs.length) {
+    html += '<h3 class="grid-head">' + t('doctors_h') + '</h3>';
+    for (var k = 0; k < docs.length; k++) {
+      var doc = docs[k], dp = null;
+      for (var m = 0; m < departments.length; m++) { if (departments[m].id === doc.deptId) { dp = departments[m]; break; } }
+      html += `<div class="card" onclick="startBookingWithDept('${doc.deptId}','${doc.id}')">`;
+      html += '<div class="card-title">' + escapeHtml(trDoctorName(doc)) + ' <span class="tip">' + escapeHtml(trTitle(doc.title)) + '</span></div>';
+      html += '<div class="tip">' + deptIcon(doc.deptId) + ' ' + escapeHtml(dp ? trDeptName(dp) : '') + ' · ' + t('fee') + ' ' + fmtMoney(doc.fee) + '</div>';
+      if (trIntro(doc.id)) html += '<div class="tip">' + t('specialty') + ': ' + escapeHtml(trIntro(doc.id)) + '</div>';
+      html += '</div>';
+    }
+    if (items.length) html += '<h3 class="grid-head">' + t('depts_h') + '</h3>';
+  }
+  var top = items.length ? items[0].score || 0 : 0;
+  if (others.length && (!items.length || others[0].score >= top)) {
+    var o = others[0];
+    var what = '“' + escapeHtml(q) + '”' + (o.hits && o.hits.length ? '（' + escapeHtml(o.hits.join('、')) + '）' : '');
+    html += '<p class="tip search-hint">' + what
+          + (o.name === '急诊科' ? t('er_hint') : t('other_hint', { dept: escapeHtml(o.name) }))
+          + (items.length ? t('see_below') : '') + '</p>';
+  }
   for (var i = 0; i < items.length; i++) {
-    var d = items[i], docs = doctorsOf(d.id);
+    var d = null;
+    for (var j = 0; j < departments.length; j++) { if (departments[j].id === items[i].deptId) { d = departments[j]; break; } }
+    if (!d) continue;
+    var docs = doctorsOf(d.id);
     html += `<div class="card" onclick="pickDept('${d.id}')">`;
-    html += '<div class="card-title">' + deptIcon(d.id) + ' ' + escapeHtml(d.name) + '</div>';
-    html += '<div class="tip">' + escapeHtml(d.desc) + '</div>';
-    html += '<div class="tip">📍 ' + escapeHtml(d.location || '位置待定') + ' · ' + docs.length + ' 位医生</div>';
+    html += '<div class="card-title">' + deptIcon(d.id) + ' ' + escapeHtml(trDeptName(d)) + '</div>';
+    if (items[i].hits && items[i].hits.length) html += '<div class="tip">' + t('match') + ': ' + escapeHtml(items[i].hits.join('、')) + '</div>';
+    html += '<div class="tip">' + escapeHtml(trDeptDesc(d)) + '</div>';
+    html += '<div class="tip">📍 ' + escapeHtml(d.location ? trLocation(d.location) : t('loc_tbd')) + ' · ' + t('n_doctors', { n: docs.length }) + '</div>';
     html += '</div>';
   }
-  if (items.length === 0) html = '<p class="tip">未找到匹配的科室，请换个关键词试试。</p>';
+  if (!items.length && !others.length && !docs.length) html = '<p class="tip search-hint">' + t('no_match') + '</p>';
   list.innerHTML = html;
 }
-function quickDept(deptId) { pickDept(deptId); }
 function pickDept(deptId) {
   bookingState.step = 2;
   bookingState.deptId = deptId;
@@ -971,9 +1262,9 @@ function pickDept(deptId) {
 async function renderStep2(body) {
   var dept = null;
   for (var i = 0; i < departments.length; i++) { if (departments[i].id === bookingState.deptId) { dept = departments[i]; break; } }
-  var html = '<div class="actions"><button class="btn" onclick="backStep1()">← 返回上一步</button></div>';
-  html += '<h3>' + escapeHtml(dept ? dept.name : '') + ' · ' + escapeHtml(dept ? (dept.location || '') : '') + '</h3>';
-  html += '<div id="doctorList"><p class="tip">加载号源中…</p></div>';
+  var html = '<div class="actions"><button class="btn" onclick="backStep1()">' + t('back') + '</button></div>';
+  html += '<h3>' + escapeHtml(dept ? trDeptName(dept) : '') + ' · ' + escapeHtml(dept ? trLocation(dept.location || '') : '') + '</h3>';
+  html += '<div id="doctorList"><p class="tip">' + t('loading_slots') + '</p></div>';
   body.innerHTML = html;
   /* 预加载该科室所有医生的号源，这样卡片上能显示真实余号 */
   var docs = doctorsOf(bookingState.deptId);
@@ -988,7 +1279,7 @@ function renderDoctorList() {
   var container = document.getElementById('doctorList');
   if (!container) return;
   var docs = doctorsOf(bookingState.deptId);
-  if (docs.length === 0) { container.innerHTML = '<p class="tip">该科室暂无出诊医生。</p>'; return; }
+  if (docs.length === 0) { container.innerHTML = '<p class="tip">' + t('no_doctor') + '</p>'; return; }
   var html = '';
   for (var i = 0; i < docs.length; i++) {
     var d = docs[i], st = scheduleStatus(d.id);
@@ -997,14 +1288,14 @@ function renderDoctorList() {
     html += `<div class="doc-card"${sel} onclick="pickDoctor('${d.id}')">`;
     html += '<div class="avatar">' + escapeHtml(d.name.charAt(0)) + '</div>';
     html += '<div class="info">';
-    html += '<div class="name">' + escapeHtml(d.name) + ' ' + escapeHtml(d.title) + ' ' + badge + '</div>';
-    html += '<div class="meta">' + (DOCTOR_INTRO[d.id] || '') + ' · 挂号费 ' + fmtMoney(d.fee) + ' 元</div>';
+    html += '<div class="name">' + escapeHtml(trDoctorName(d)) + ' ' + escapeHtml(trTitle(d.title)) + ' ' + badge + '</div>';
+    html += '<div class="meta">' + escapeHtml(trIntro(d.id)) + ' · ' + t('fee') + ' ' + fmtMoney(d.fee) + '</div>';
     html += '<div class="actions">';
     if (st.remain > 0) {
-      html += `<button class="btn small primary" onclick="event.stopPropagation(); pickDoctor('${d.id}')">查看号源</button>`;
+      html += `<button class="btn small primary" onclick="event.stopPropagation(); pickDoctor('${d.id}')">${t('view_slots')}</button>`;
     } else {
-      html += `<button class="btn small" onclick="event.stopPropagation(); joinWaitlistFromBooking('${d.id}')">候补</button>`;
-      html += ` <button class="btn small" onclick="event.stopPropagation(); pickDoctor('${d.id}')">查看其他时段</button>`;
+      /* 候补按半天排：先展开号源面板，在已满的时段上点「排候补」 */
+      html += `<button class="btn small" onclick="event.stopPropagation(); pickDoctor('${d.id}')">${t('join_wl')}</button>`;
     }
     html += '</div>';
     /* 号源面板嵌在医生卡片里：点日期/时段时必须拦住冒泡，
@@ -1018,16 +1309,16 @@ function renderDoctorList() {
 function scheduleStatus(doctorId) {
   var list = allSchedules[doctorId] || [], totalRemain = 0;
   for (var i = 0; i < list.length; i++) { if (!list[i].closed) totalRemain += list[i].remain; }
-  if (totalRemain > 5) return { text: '有号', cls: 'green', remain: totalRemain };
-  if (totalRemain > 0) return { text: '紧张', cls: 'orange', remain: totalRemain };
-  return { text: '已满', cls: 'grey', remain: 0 };
+  if (totalRemain > 5) return { text: t('st_avail'), cls: 'green', remain: totalRemain };
+  if (totalRemain > 0) return { text: t('st_tight'), cls: 'orange', remain: totalRemain };
+  return { text: t('st_full'), cls: 'grey', remain: 0 };
 }
 async function pickDoctor(doctorId) {
   bookingState.doctorId = doctorId;
   bookingState.scheduleId = '';
   if (!allSchedules[doctorId]) {
     try { allSchedules[doctorId] = await apiDoctorSchedules(doctorId, 14); }
-    catch (e) { alert('加载号源失败：' + e.message); return; }
+    catch (e) { alert(t('load_slots_fail') + e.message); return; }
   }
   renderDoctorList();
 }
@@ -1039,7 +1330,9 @@ function renderSchedulePanel() {
   for (var i = 0; i < doctors.length; i++) { if (doctors[i].id === bookingState.doctorId) { doc = doctors[i]; break; } }
   var docFee = doc ? doc.fee : 0;
   var days = buildDateRange(14);
-  var html = '<div class="dates scroll">';
+  var html = '';
+  if (scheduleStatus(bookingState.doctorId).remain === 0) html += '<p class="tip">' + t('wl_pick_slot') + '</p>';
+  html += '<div class="dates scroll">';
   for (var i = 0; i < days.length; i++) {
     var ds = days[i].date, has = false;
     for (var j = 0; j < list.length; j++) { if (list[j].date === ds && !list[j].closed && list[j].remain > 0) { has = true; break; } }
@@ -1054,11 +1347,13 @@ function renderSchedulePanel() {
       var s = list[i];
       if (s.date !== bookingState.date || s.closed) continue;
       var st = s.remain > 5 ? 'green' : s.remain > 0 ? 'orange' : 'grey';
-      var stText = s.remain > 5 ? '有号' : s.remain > 0 ? '紧张' : '已满';
+      var stText = s.remain > 5 ? t('st_avail') : s.remain > 0 ? t('st_tight') : t('st_full');
       var on = (bookingState.scheduleId === s.id) ? ' style="border-color:#2563eb;background:#eef3ff"' : '';
       html += `<div class="card"${on} onclick="selectPeriod('${s.id}')">`;
-      html += '<div class="card-title">' + escapeHtml(s.period) + ' <span class="badge ' + st + '">' + stText + '（余 ' + s.remain + '）</span></div>';
-      html += '<div class="tip">诊室 ' + escapeHtml(s.room || '待定') + ' · ' + fmtMoney(docFee) + ' 元</div>';
+      html += '<div class="card-title">' + escapeHtml(trPeriod(s.period)) + ' <span class="badge ' + st + '">' + stText + ' · ' + t('remain', { n: s.remain }) + '</span></div>';
+      html += '<div class="tip">' + escapeHtml(trRoom(s.room)) + ' · ' + fmtMoney(docFee) + '</div>';
+      /* 已满的半天可以排候补；按钮要拦住冒泡，否则会触发外层的 selectPeriod */
+      if (s.remain <= 0) html += `<div class="actions"><button class="btn small" onclick="event.stopPropagation(); openWaitlistForm('${s.id}')">${t('join_wl')}</button></div>`;
       html += '</div>';
     }
     html += '</div>';
@@ -1073,7 +1368,7 @@ function selectDate(dateStr) {
 function selectPeriod(scheduleId) {
   var list = allSchedules[bookingState.doctorId] || [], s = null;
   for (var i = 0; i < list.length; i++) { if (list[i].id === scheduleId) { s = list[i]; break; } }
-  if (!s || s.remain <= 0) { alert('该时段已约满，请选择其他时段或医生'); return; }
+  if (!s || s.remain <= 0) { alert(t('slot_full_alert')); return; }
   bookingState.scheduleId = scheduleId;
   bookingState.period = s.period;
   bookingState.step = 3;
@@ -1095,37 +1390,37 @@ function renderStep3(body) {
   var list = allSchedules[bookingState.doctorId] || [];
   for (var i = 0; i < list.length; i++) { if (list[i].id === bookingState.scheduleId) { sch = list[i]; break; } }
   var saved = getSavedPatients();
-  var html = '<div class="actions"><button class="btn" onclick="backStep2()">← 返回上一步</button></div>';
-  html += '<h3>确认预约信息</h3>';
+  var pt = bookingState.patient || {};
+  var html = '<div class="actions"><button class="btn" onclick="backStep2()">' + t('back') + '</button></div>';
+  html += '<h3>' + t('confirm_h') + '</h3>';
   html += '<div class="box">';
-  html += '<p><b>就诊科室：</b>' + escapeHtml(dept ? dept.name : '') + '</p>';
-  html += '<p><b>接诊医生：</b>' + escapeHtml(doc ? (doc.name + ' ' + doc.title) : '') + '</p>';
-  html += '<p><b>就诊时间：</b>' + escapeHtml(sch ? (sch.date + ' ' + sch.period) : '') + '</p>';
-  html += '<p><b>就诊地点：</b>' + escapeHtml(dept ? (dept.location || '') : '') + ' · ' + escapeHtml(sch ? (sch.room || '待定') : '') + '</p>';
-  html += '<p><b>挂号费用：</b>' + fmtMoney(doc ? doc.fee : 0) + ' 元</p>';
+  html += '<p><b>' + t('f_dept') + colon() + '</b>' + escapeHtml(dept ? trDeptName(dept) : '') + '</p>';
+  html += '<p><b>' + t('f_doctor') + colon() + '</b>' + escapeHtml(doc ? (trDoctorName(doc) + ' ' + trTitle(doc.title)) : '') + '</p>';
+  html += '<p><b>' + t('f_time') + colon() + '</b>' + escapeHtml(sch ? (sch.date + ' ' + weekdayLabel(sch.date) + ' ' + trPeriod(sch.period)) : '') + '</p>';
+  html += '<p><b>' + t('f_place') + colon() + '</b>' + escapeHtml(dept ? trLocation(dept.location || '') : '') + ' · ' + escapeHtml(sch ? trRoom(sch.room) : '') + '</p>';
+  html += '<p><b>' + t('f_fee') + colon() + '</b>' + fmtMoney(doc ? doc.fee : 0) + '</p>';
   html += '</div>';
-  html += '<div class="tip" style="margin:8px 0">爽约 3 次将进入黑名单，30 天内无法挂号。如需取消，请在就诊日前操作。</div>';
-  html += '<h3>就诊人信息</h3>';
+  html += '<div class="tip" style="margin:8px 0">' + t('noshow_warn') + '</div>';
+  html += '<h3>' + t('patient_h') + '</h3>';
   if (saved.length > 0) {
     html += '<div class="patient-pick">';
     for (var i = 0; i < saved.length; i++) {
       var p = saved[i];
-      var on = (bookingState.patient && bookingState.patient.idCard === p.idCard) ? ' on' : '';
-      html += '<div class="patient-chip' + on + '" onclick="pickSavedPatient(' + i + ')">' + escapeHtml(p.name) + ' ' + escapeHtml(p.idCard.slice(0,6) + '****' + p.idCard.slice(-4)) + '</div>';
+      var on = (sessKey(pt) && sessKey(pt) === sessKey(p)) ? ' on' : '';
+      html += '<div class="patient-chip' + on + '" onclick="pickSavedPatient(' + i + ')">' + escapeHtml(p.name) + ' ' + escapeHtml(maskDoc(p.idCard)) + '</div>';
     }
-    html += '<div class="patient-chip" onclick="newPatient()">+ 新就诊人</div>';
+    html += '<div class="patient-chip" onclick="newPatient()">' + t('new_patient') + '</div>';
     html += '</div>';
   }
   html += '<div id="patientForm">';
-  html += '<p><label>姓名</label><input id="bkName" type="text" placeholder="真实姓名" value="' + escapeHtml(bookingState.patient ? bookingState.patient.name : '') + '" /></p>';
-  html += '<p><label>身份证号</label><input id="bkIdCard" type="text" maxlength="18" placeholder="18 位身份证号" value="' + escapeHtml(bookingState.patient ? bookingState.patient.idCard : '') + '" /></p>';
-  html += '<p><label>手机号</label><input id="bkPhone" type="text" maxlength="11" placeholder="11 位手机号" value="' + escapeHtml(bookingState.patient ? bookingState.patient.phone : '') + '" /></p>';
-  html += '<p><label>邮箱</label><input id="bkEmail" type="text" maxlength="120" placeholder="选填，用于就诊提醒" value="' + escapeHtml(bookingState.patient ? (bookingState.patient.email || '') : '') + '" /></p>';
+  html += '<p><label for="bkName">' + t('name') + '</label><input id="bkName" type="text" maxlength="50" autocomplete="name" placeholder="' + escapeHtml(t('name_ph')) + '" value="' + escapeHtml(pt.name || '') + '" /></p>';
+  html += docFieldsHtml('bk', pt, true);
+  html += '<p><label for="bkEmail">' + t('email') + '</label><input id="bkEmail" type="text" maxlength="120" placeholder="' + escapeHtml(t('email_ph')) + '" value="' + escapeHtml(pt.email || '') + '" /></p>';
   html += '</div>';
   /* 错误直接写在按钮上方：alert 被浏览器屏蔽时，用户会以为「点了没反应」 */
   html += '<p class="form-error" id="bkError" role="alert"></p>';
   html += '<div class="actions">';
-  html += '<button class="btn primary" id="bkSubmit" onclick="submitBooking()">确认预约</button>';
+  html += '<button class="btn primary" id="bkSubmit" onclick="submitBooking()">' + t('submit_booking') + '</button>';
   html += '</div>';
   body.innerHTML = html;
 }
@@ -1147,42 +1442,47 @@ function backStep2() {
 }
 /* captcha 由验证码框算完后传进来：{ token, answer }；第一次点按钮时为空 */
 async function submitBooking(captcha) {
-  var name = document.getElementById('bkName').value.trim();
-  var idCard = document.getElementById('bkIdCard').value.trim().toUpperCase();
-  var phone = document.getElementById('bkPhone').value.trim();
-  var email = document.getElementById('bkEmail').value.trim();
   var errEl = document.getElementById('bkError');
+  function fail(msg) { if (errEl) errEl.textContent = msg; else alert(msg); }
   if (errEl) errEl.textContent = '';
-  if (!name || !idCard || !phone) { if (errEl) errEl.textContent = '请填写姓名、身份证号和手机号'; return; }
-  if (!bookingState.scheduleId) { alert('就诊时段已失效，请重新选择'); backStep2(); return; }
+  var nm = readName('bkName');
+  if (!nm.ok) return fail(nm.msg);
+  var doc = readDoc('bk');
+  if (!doc.ok) return fail(doc.msg);
+  var ph = readPhone('bk');
+  if (!ph.ok) return fail(ph.msg);
+  var em = readEmail('bkEmail');
+  if (!em.ok) return fail(em.msg);
+  if (!bookingState.scheduleId) { alert(t('slot_expired')); backStep2(); return; }
   var btn = document.getElementById('bkSubmit');
-  if (btn) { btn.disabled = true; btn.textContent = '预约中…'; }
+  if (btn) { btn.disabled = true; btn.textContent = t('booking_ing'); }
+  var patient = {
+    name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard, docKey: doc.docKey,
+    phoneCc: ph.phoneCc, phone: ph.phone, email: em.email,
+  };
   try {
-    var patient = { name: name, idCard: idCard, phone: phone, email: email };
     var apt = await apiCreateAppointment(bookingState.scheduleId, patient, captcha ? captcha.token : '', captcha ? captcha.answer : '');
-    saveSession({ name: name, idCard: idCard, phone: phone, email: email });
-    savePatientToHistory({ name: name, idCard: idCard, phone: phone, email: email });
+    saveSession(patient);
+    savePatientToHistory(patient);
     bookingState.step = 4;
-    bookingState.patient = { name: name, idCard: idCard, phone: phone, email: email };
+    bookingState.patient = patient;
     bookingState.apt = apt;
     renderBookingStep();
-    if (apt.notice) alert(apt.notice);
+    if (apt.notice) alert(trError(apt.notice));
   } catch (err) {
-    if (btn) { btn.disabled = false; btn.textContent = '确认预约'; }
+    if (btn) { btn.disabled = false; btn.textContent = t('submit_booking'); }
     if (err.code === 'CAPTCHA_REQUIRED') {
-      if (captcha) alert('验证码不正确，请重新计算');
-      document.getElementById('captchaWhy').textContent = '该时段仅剩 ' + (err.data && err.data.remain || '少量') + ' 个号，需要验证一下不是脚本在抢号。';
+      if (captcha) alert(t('captcha_wrong'));
+      document.getElementById('captchaWhy').textContent = t('captcha_why', { n: (err.data && err.data.remain) || '…' });
       var c = await openCaptcha();
       if (c) submitBooking(c);
       return;
     }
-    var msg = err.message || '预约失败';
-    if (msg.indexOf('号源已挂完') >= 0 || msg.indexOf('超卖') >= 0 || msg.indexOf('已预约该时段') >= 0) {
-      msg = '这个号刚被约走了。为您保留已选条件，请换个时段或医生再试。';
-      alert(msg); backStep2(); return;
+    var raw = err.raw || err.message || '';
+    if (raw.indexOf('号源已挂完') >= 0 || raw.indexOf('超卖') >= 0 || raw.indexOf('已预约该时段') >= 0) {
+      alert(t('just_taken')); backStep2(); return;
     }
-    if (errEl) errEl.textContent = msg;
-    else alert(msg);
+    fail(err.message || t('fail'));
   }
 }
 
@@ -1194,46 +1494,45 @@ function renderStep4(body) {
   for (var i = 0; i < doctors.length; i++) { if (doctors[i].id === bookingState.doctorId) { doc = doctors[i]; break; } }
   var html = '<div class="success-box">';
   html += '<div class="big-check">✅</div>';
-  html += '<h2>预约成功</h2>';
+  html += '<h2>' + t('success') + '</h2>';
   html += '<div class="detail">';
-  html += '<p><b>就诊时间：</b>' + escapeHtml(apt.date || '') + ' ' + escapeHtml(apt.period || '') + '</p>';
-  html += '<p><b>就诊地点：</b>' + escapeHtml(dept ? (dept.location || '') : '') + ' · ' + escapeHtml(apt.room || '诊室待定') + '</p>';
-  html += '<p><b>建议到院时间：</b>' + suggestArrival(apt.period) + '</p>';
-  html += '<p><b>就诊人：</b>' + escapeHtml(bookingState.patient ? bookingState.patient.name : '') + '</p>';
-  html += '<p><b>挂号费用：</b>' + fmtMoney(apt.fee || 0) + ' 元</p>';
-  html += '<p><b>挂号单号：</b>' + escapeHtml(apt.id || '') + ' · 序号 ' + (apt.seqNo || '-') + '</p>';
+  html += '<p><b>' + t('f_time') + colon() + '</b>' + escapeHtml(apt.date || '') + ' ' + escapeHtml(apt.date ? weekdayLabel(apt.date) : '') + ' ' + escapeHtml(trPeriod(apt.period)) + '</p>';
+  html += '<p><b>' + t('f_place') + colon() + '</b>' + escapeHtml(dept ? trLocation(dept.location || '') : '') + ' · ' + escapeHtml(trRoom(apt.room)) + '</p>';
+  html += '<p><b>' + t('f_arrive') + colon() + '</b>' + suggestArrival(apt.period) + '</p>';
+  html += '<p><b>' + t('f_patient') + colon() + '</b>' + escapeHtml(bookingState.patient ? bookingState.patient.name : '') + '</p>';
+  html += '<p><b>' + t('f_fee') + colon() + '</b>' + fmtMoney(apt.fee || 0) + '</p>';
+  html += '<p><b>' + t('f_apt_no') + colon() + '</b>' + escapeHtml(apt.id || '') + ' · ' + t('seq') + ' ' + (apt.seqNo || '-') + '</p>';
   html += '</div>';
   html += '<div class="actions">';
-  html += '<button class="btn" onclick="addToCalendar()">📅 添加到日历</button>';
-  html += '<button class="btn" onclick="viewRoute()">🗺️ 查看路线</button>';
-  html += '<button class="btn" onclick="cancelJustBooked()">取消预约</button>';
-  html += '<button class="btn primary" onclick="startBooking()">继续挂号</button>';
+  html += '<button class="btn" onclick="addToCalendar()">' + t('add_cal') + '</button>';
+  html += '<button class="btn" onclick="viewRoute()">' + t('route') + '</button>';
+  html += '<button class="btn" onclick="cancelJustBooked()">' + t('cancel_appt') + '</button>';
+  html += '<button class="btn primary" onclick="startBooking()">' + t('continue_booking') + '</button>';
   html += '</div>';
-  html += '<p class="tip">请携带身份证原件、医保卡（如有）、既往病历资料。</p>';
+  html += '<p class="tip">' + t('bring_docs') + '</p>';
   html += '</div>';
   body.innerHTML = html;
 }
 function cancelJustBooked() {
   var apt = bookingState.apt;
   if (!apt || !apt.id) return;
-  if (!confirm('确定取消这张挂号单？')) return;
-  apiCancelAppointment(apt.id).then(function () { alert('已取消'); showPage('mine'); }).catch(function (e) { alert(e.message); });
+  if (!confirm(t('confirm_cancel'))) return;
+  apiCancelAppointment(apt.id).then(function () { alert(t('cancelled_ok')); showPage('mine'); }).catch(function (e) { alert(e.message); });
 }
 function addToCalendar() {
   var apt = bookingState.apt;
   if (!apt) return;
-  var text = '就诊提醒：' + (apt.deptName || '') + ' ' + (apt.doctorName || '') + '，请于 ' + suggestArrival(apt.period) + ' 到院。地点：' + (apt.location || '') + ' ' + (apt.room || '') + '。';
-  alert('已复制到剪贴板（模拟）：\\n' + text);
+  var dept = null, doc = null;
+  for (var i = 0; i < departments.length; i++) { if (departments[i].id === bookingState.deptId) dept = departments[i]; }
+  for (var k = 0; k < doctors.length; k++) { if (doctors[k].id === bookingState.doctorId) doc = doctors[k]; }
+  var text = (apt.date || '') + ' ' + trPeriod(apt.period) + ' · ' + (dept ? trDeptName(dept) : '') + ' · ' + (doc ? trDoctorName(doc) : '')
+    + '\n' + t('f_arrive') + ': ' + suggestArrival(apt.period)
+    + '\n' + t('f_place') + ': ' + (dept ? trLocation(dept.location || '') : '') + ' · ' + trRoom(apt.room);
+  alert(t('cal_copied') + '\n' + text);
 }
 function viewRoute() {
   window.open('https://map.baidu.com/search/' + encodeURIComponent(HOSPITAL.address), '_blank');
 }
-function joinWaitlistFromBooking(doctorId) {
-  var doc = null;
-  for (var i = 0; i < doctors.length; i++) { if (doctors[i].id === doctorId) { doc = doctors[i]; break; } }
-  openWaitlistForm(bookingState.deptId, doctorId, doc ? doc.name : '');
-}
-
 /* ---------- 我的预约（分组） ---------- */
 function switchMineTab(tab) {
   var tabs = document.querySelectorAll('#mineTabs .btn');
@@ -1245,85 +1544,65 @@ function switchMineTab(tab) {
 async function renderMine() {
   switchMineTab('upcoming');
 }
+let mineTab = 'upcoming';
 async function renderMineList(tab) {
+  mineTab = tab;
   var listEl = document.getElementById('mineList');
   var tip = document.getElementById('mineTip');
   if (!listEl) return;
   var sess = loadSession();
-  if (!sess || !sess.idCard) {
-    listEl.innerHTML = '<p class="tip">请先填写就诊人身份证号以查看预约记录。</p>';
+  if (!sessKey(sess)) {
+    listEl.innerHTML = '<p class="tip">' + t('need_patient') + '</p>'
+      + '<div class="actions"><button class="btn primary" onclick="verifyAndReload()">' + t('auth_h') + '</button></div>';
     if (tip) tip.textContent = '';
     return;
   }
-  listEl.innerHTML = '<p class="tip">加载中…</p>';
+  if (tab === 'waitlist') return renderMyWaitlist();
+  listEl.innerHTML = '<p class="tip">' + t('loading') + '</p>';
   try {
     var statusMap = { upcoming: 'booked', completed: 'completed', cancelled: 'cancelled' };
-    var list = await apiAppointments({ idCard: sess.idCard, status: statusMap[tab] || 'all', limit: 200 });
-    if (tip) tip.textContent = '共 ' + list.length + ' 条';
-    if (list.length === 0) { listEl.innerHTML = '<p class="tip">暂无记录。</p>'; return; }
+    var list = await apiAppointments({ idCard: sessKey(sess), status: statusMap[tab] || 'all', limit: 200 });
+    if (mineTab !== tab) return;          /* 等结果期间已切到别的页签，丢弃这次的结果 */
+    if (tip) tip.textContent = t('total_n', { n: list.length });
+    if (list.length === 0) { listEl.innerHTML = '<p class="tip">' + t('no_records') + '</p>'; return; }
     var html = '';
     for (var i = 0; i < list.length; i++) html += renderApptCard(list[i], tab);
     listEl.innerHTML = html;
   } catch (e) {
-    listEl.innerHTML = '<p class="tip">加载失败：' + escapeHtml(e.message) + '</p>';
+    listEl.innerHTML = '<p class="tip">' + t('load_fail') + escapeHtml(e.message) + '</p>';
     if (tip) tip.textContent = '';
   }
+}
+/* 本机还没有就诊人：先做一次实名校验，通过后记为当前就诊人再刷新 */
+async function verifyAndReload() {
+  if (await openPatientAuth(loadSession(), '')) showPage(currentPage);
 }
 function renderApptCard(a, tab) {
   var st = statusText(a.status);
   var cls = statusClass(a.status);
   var html = '<div class="appt-card">';
-  html += '<div class="header"><span class="title">' + escapeHtml(a.deptName || deptName(a.deptId)) + ' · ' + escapeHtml(a.doctorName || doctorName(a.doctorId)) + '</span><span class="badge ' + cls + '">' + st + '</span></div>';
-  html += '<div class="meta">' + escapeHtml(a.date || '') + ' ' + escapeHtml(a.period || '') + ' · 序号 ' + (a.seqNo || '-') + ' · 费用 ' + fmtMoney(a.fee || 0) + ' 元</div>';
+  html += '<div class="header"><span class="title">' + escapeHtml(deptName(a.deptId) || a.deptName) + ' · ' + escapeHtml(doctorName(a.doctorId) || a.doctorName) + '</span><span class="badge ' + cls + '">' + st + '</span></div>';
+  html += '<div class="meta">' + escapeHtml(a.date || '') + ' ' + escapeHtml(trPeriod(a.period)) + ' · ' + t('seq') + ' ' + (a.seqNo || '-') + ' · ' + t('fee') + ' ' + fmtMoney(a.fee || 0) + '</div>';
   if (a.status === 'booked') {
     html += '<div class="meta" style="color:#2563eb">' + fmtCountdown(a.date) + '</div>';
     html += '<div class="actions">';
-    html += `<button class="btn small" onclick="cancelAppt('${a.id}')">取消预约</button>`;
-    html += ` <button class="btn small primary" onclick="rescheduleAppt('${a.id}','${a.deptId}')">改约</button>`;
+    html += `<button class="btn small" onclick="cancelAppt('${a.id}')">${t('cancel_appt')}</button>`;
+    html += ` <button class="btn small primary" onclick="rescheduleAppt('${a.id}','${a.deptId}')">${t('reschedule')}</button>`;
     html += '</div>';
   }
   html += '</div>';
   return html;
 }
 function cancelAppt(aptId) {
-  if (!confirm('确定取消这张挂号单？')) return;
-  apiCancelAppointment(aptId).then(function () { alert('已取消'); renderMine(); }).catch(function (e) { alert(e.message); });
+  if (!confirm(t('confirm_cancel'))) return;
+  apiCancelAppointment(aptId).then(function () { alert(t('cancelled_ok')); renderMineList(mineTab); }).catch(function (e) { alert(e.message); });
 }
 function rescheduleAppt(aptId, deptId) {
-  if (!confirm('改约将先取消当前预约，并保留科室选择。确定吗？')) return;
+  if (!confirm(t('confirm_reschedule'))) return;
   apiCancelAppointment(aptId).then(function () {
     bookingState = { step: 2, deptId: deptId, doctorId: '', scheduleId: '', date: '', period: '', patient: loadSession(), apt: null };
     showPage('booking'); renderBookingStep();
   }).catch(function (e) { alert(e.message); });
-}
-
-/* ---------- 找医生 ---------- */
-async function renderFind() {
-  var list = document.getElementById('findList');
-  var kw = document.getElementById('findKeyword').value.trim().toLowerCase();
-  if (!list) return;
-  var html = '';
-  for (var i = 0; i < departments.length; i++) {
-    var d = departments[i], docs = doctorsOf(d.id);
-    if (kw) {
-      var has = d.name.indexOf(kw) >= 0 || d.desc.toLowerCase().indexOf(kw) >= 0;
-      for (var j = 0; j < docs.length; j++) { if (docs[j].name.indexOf(kw) >= 0) has = true; }
-      if (!has) continue;
-    }
-    html += '<h3>' + deptIcon(d.id) + ' ' + escapeHtml(d.name) + '</h3>';
-    html += '<div class="cards">';
-    for (var j = 0; j < docs.length; j++) {
-      var doc = docs[j], st = scheduleStatus(doc.id);
-      html += '<div class="card">';
-      html += '<div class="card-title">' + escapeHtml(doc.name) + ' ' + escapeHtml(doc.title) + ' <span class="badge ' + st.cls + '">' + st.text + '</span></div>';
-      html += '<div class="tip">' + (DOCTOR_INTRO[doc.id] || '') + ' · 挂号费 ' + fmtMoney(doc.fee) + ' 元</div>';
-      html += `<div class="actions"><button class="btn small primary" onclick="startBookingWithDept('${d.id}','${doc.id}')">立即预约</button></div>`;
-      html += '</div>';
-    }
-    html += '</div>';
-  }
-  if (!html) html = '<p class="tip">未找到匹配的医生或科室。</p>';
-  list.innerHTML = html;
 }
 
 /* ---------- 就诊提醒 ---------- */
@@ -1332,43 +1611,41 @@ async function renderReminders() {
   var tip = document.getElementById('reminderTip');
   if (!list) return;
   var sess = loadSession();
-  if (!sess || !sess.idCard) {
-    list.innerHTML = '<p class="tip">请先填写就诊人身份证号以查看提醒。</p>';
+  if (!sessKey(sess)) {
+    list.innerHTML = '<p class="tip">' + t('need_patient') + '</p>'
+      + '<div class="actions"><button class="btn primary" onclick="verifyAndReload()">' + t('auth_h') + '</button></div>';
     if (tip) tip.textContent = '';
     return;
   }
-  list.innerHTML = '<p class="tip">加载中…</p>';
+  list.innerHTML = '<p class="tip">' + t('loading') + '</p>';
   try {
-    var arr = await apiNotifications(sess.idCard);
-    if (tip) tip.textContent = '共 ' + arr.length + ' 条';
-    if (arr.length === 0) { list.innerHTML = '<p class="tip">暂无提醒。</p>'; return; }
+    var arr = await apiNotifications(sessKey(sess));
+    if (tip) tip.textContent = t('total_n', { n: arr.length }) + (t('rem_lang_note') ? ' · ' + t('rem_lang_note') : '');
+    if (arr.length === 0) { list.innerHTML = '<p class="tip">' + t('no_reminders') + '</p>'; return; }
     var html = '';
     for (var i = 0; i < arr.length; i++) {
       var n = arr[i];
       html += '<div class="appt-card">';
-      html += '<div class="header"><span class="title">' + escapeHtml(n.template || '提醒') + '</span><span class="tip">' + fmtTime(n.scheduledAt) + '</span></div>';
+      html += '<div class="header"><span class="title">' + escapeHtml(t('reminder')) + '</span><span class="tip">' + fmtTime(n.scheduledAt) + '</span></div>';
       html += '<div class="meta">' + escapeHtml(n.message || '') + '</div>';
       html += '</div>';
     }
     list.innerHTML = html;
   } catch (e) {
-    list.innerHTML = '<p class="tip">加载失败：' + escapeHtml(e.message) + '</p>';
+    list.innerHTML = '<p class="tip">' + t('load_fail') + escapeHtml(e.message) + '</p>';
     if (tip) tip.textContent = '';
   }
 }
 
 /* ---------- 我的资料补充 ---------- */
 function clearLocalPatient() {
-  if (!confirm('确定清除本机保存的就诊人信息？')) return;
+  if (!confirm(t('confirm_clear'))) return;
   try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
   try { localStorage.removeItem('hosp_reg_patients'); } catch (e) {}
   bookingState.patient = null;
-  var el = document.getElementById('pIdCardLook');
-  if (el) el.value = '';
-  var pf = document.getElementById('profileForm');
-  if (pf) pf.style.display = 'none';
+  renderProfile();
   var pt = document.getElementById('profileTip');
-  if (pt) pt.textContent = '已清除本机就诊人记录';
+  if (pt) pt.textContent = t('cleared');
 }
 
 /* ============================================================
@@ -1484,7 +1761,7 @@ function showAdminTab(tab) {
   if (tab === 'records') renderRecords();
   if (tab === 'schedules') renderSchedules();
   if (tab === 'waitlist') renderAdminWaitlist();
-  if (tab === 'proxy') initProxyForm();
+  if (tab === 'proxy') { initProxyForm(); document.getElementById('pxDoc').innerHTML = docFieldsHtml('px', {}, true); }
   if (tab === 'access') renderAccessLog();
   if (tab === 'outbox') renderOutbox();
   if (tab === 'blacklist') renderBlacklist();
@@ -1600,17 +1877,12 @@ function clearFilters() {
   renderRecords();
 }
 
-/* 状态中文名。
+/* 挂号状态的显示名（按当前语言，词条在 i18n.js 的 s_*）。
  * 库里是四态：booked / cancelled / completed / no_show；
  * 「已停诊」不是独立状态，是 cancelled 里 cancel_reason = closure 的那一批，
  * 后端 map_appointment 已经把它还原成 closed 了。 */
 function statusText(status) {
-  if (status === 'booked') return '待就诊';
-  if (status === 'cancelled') return '已取消';
-  if (status === 'closed') return '已停诊';
-  if (status === 'completed') return '已完成';
-  if (status === 'no_show') return '已爽约';
-  return status;
+  return I18N['s_' + status] ? t('s_' + status) : status;
 }
 
 /* 管理端退号 */
@@ -1823,6 +2095,11 @@ function watchDataTables() {
 window.onload = async function () {
   watchDataTables();
 
+  /* 语言：上次选的，或按浏览器语言 */
+  LANG = detectLang();
+  buildLangSelect();
+  applyI18n();
+
   /* 0. 先把上次选的字号恢复上 —— 老年患者不希望每次进来都重按一遍 */
   try {
     applyBigFont(localStorage.getItem(BIGFONT_KEY) === '1');
@@ -1835,8 +2112,7 @@ window.onload = async function () {
     departments = await apiDepartments();
     doctors = await apiDoctors();
   } catch (e) {
-    alert('连不上服务器：' + e.message
-      + '\n\n请确认后端已经启动（在项目目录运行 python server/app.py），然后刷新本页。');
+    alert(t('e_network') + '\n\n' + e.message);
     return;
   }
 
@@ -1859,6 +2135,26 @@ window.onload = async function () {
   goHome();
 };
 
+/* ---------- 语言切换 ---------- */
+function buildLangSelect() {
+  const sel = document.getElementById('langSel');
+  if (!sel) return;
+  sel.innerHTML = LANGS.map(function (l) {
+    return '<option value="' + l[0] + '"' + (l[0] === LANG ? ' selected' : '') + '>' + l[1] + '</option>';
+  }).join('');
+}
+
+function setLang(code) {
+  LANG = code;
+  const sel = document.getElementById('langSel');
+  if (sel) sel.value = code;
+  try { localStorage.setItem(LANG_KEY, code); } catch (e) { /* 记不住就只是下次还按浏览器语言 */ }
+  applyI18n();
+  /* 当前页按新语言重画（挂号向导停在原来那一步） */
+  if (currentPage === 'booking') renderBookingStep();
+  else showPage(currentPage);
+}
+
 
 /* ============================================================
  * 十二、候补（① 候补与自动补位）—— 患者端
@@ -1874,10 +2170,13 @@ window.onload = async function () {
 let wlScheduleId = '';   // 正在排队的那条排班
 let myWlList = [];       // 我的候补（含历史）
 
-/* 在 currentSchedules 里按编号找排班 */
+/* 按编号找排班：号源面板里的数据在 allSchedules（按医生分组） */
 function findSchedule(sid) {
-  for (let i = 0; i < currentSchedules.length; i++) {
-    if (currentSchedules[i].id === sid) return currentSchedules[i];
+  for (const docId in allSchedules) {
+    const list = allSchedules[docId] || [];
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].id === sid) return Object.assign({ doctorId: docId }, list[i]);
+    }
   }
   return null;
 }
@@ -1887,16 +2186,18 @@ function openWaitlistForm(sid) {
   if (!s) return;
 
   wlScheduleId = sid;
-  document.getElementById('wlWhy').textContent =
-    s.date + ' ' + s.period + ' · ' + deptName(s.deptId) + ' ' +
-    doctorName(s.doctorId) + ' 已约满，可以排候补。';
+  let doc = null;
+  for (let i = 0; i < doctors.length; i++) { if (doctors[i].id === s.doctorId) doc = doctors[i]; }
+  document.getElementById('wlWhy').textContent = t('wl_why', {
+    when: s.date + ' ' + weekdayLabel(s.date) + ' ' + trPeriod(s.period),
+    who: (doc ? deptName(doc.deptId) + ' ' + trDoctorName(doc) : ''),
+  });
 
   const session = loadSession();
   document.getElementById('wlName').value = session.name || '';
-  document.getElementById('wlIdCard').value = session.idCard || '';
-  document.getElementById('wlPhone').value = session.phone || '';
+  document.getElementById('wlDoc').innerHTML = docFieldsHtml('wl', session, true);
   document.getElementById('wlEmail').value = session.email || '';
-
+  document.getElementById('wlTipErr').textContent = '';
   document.getElementById('wlMask').style.display = 'flex';
 }
 
@@ -1905,73 +2206,54 @@ function closeWaitlistForm() {
 }
 
 async function submitWaitlist() {
-  const name = document.getElementById('wlName').value.trim();
-  const idCard = document.getElementById('wlIdCard').value.trim();
-  const phone = document.getElementById('wlPhone').value.trim();
-  const email = document.getElementById('wlEmail').value.trim();
-
-  if (!name || !idCard || !phone) {
-    alert('请把姓名、身份证号、手机号都填上');
-    return;
-  }
-
+  const err = document.getElementById('wlTipErr');
+  const nm = readName('wlName');
+  if (!nm.ok) { err.textContent = nm.msg; return; }
+  const doc = readDoc('wl');
+  if (!doc.ok) { err.textContent = doc.msg; return; }
+  const ph = readPhone('wl');
+  if (!ph.ok) { err.textContent = ph.msg; return; }
+  const em = readEmail('wlEmail');
+  if (!em.ok) { err.textContent = em.msg; return; }
+  const patient = {
+    name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard, docKey: doc.docKey,
+    phoneCc: ph.phoneCc, phone: ph.phone, email: em.email,
+  };
   try {
-    const r = await apiJoinWaitlist(wlScheduleId, {
-      name: name, idCard: idCard, phone: phone, email: email,
-    });
-    saveSession({ name: name, idCard: idCard, phone: phone, email: email });
+    const r = await apiJoinWaitlist(wlScheduleId, patient);
+    saveSession(patient);
+    savePatientToHistory(patient);
     closeWaitlistForm();
-    alert(r.message + '\n\n有空位时会按顺序通知你，号源保留 2 小时。' + (r.notice ? '\n\n' + r.notice : ''));
-    renderPeriods();
-    showPage('waitlist');
+    alert(t('wl_joined', { n: r.waitlist ? r.waitlist.position : '' }) + (r.notice ? '\n\n' + trError(r.notice) : ''));
+    showPage('mine');
+    switchMineTab('waitlist');
   } catch (e) {
-    alert(e.message);
+    err.textContent = e.message;
   }
 }
 
-const WL_STATUS = {
-  waiting: '排队中',
-  offered: '已通知',
-  converted: '已转正',
-  expired: '已过期',
-  cancelled: '已放弃',
-};
-
+/* 「我的预约」里的「候补」页签 */
 async function renderMyWaitlist() {
-  const tip = document.getElementById('wlTip');
-  const empty = document.getElementById('wlEmpty');
-  const box = document.getElementById('wlList');
-
+  const tip = document.getElementById('mineTip');
+  const box = document.getElementById('mineList');
   const session = loadSession();
-  if (!session.idCard) {
-    tip.textContent = '';
-    empty.textContent = '本机还没记录就诊人信息。挂号或排候补之后，这里会显示你的候补队列。';
-    empty.style.display = '';
-    box.innerHTML = '';
-    return;
-  }
+  box.innerHTML = '<p class="tip">' + t('loading') + '</p>';
 
   let list = [];
   try {
-    list = await apiMyWaitlist(session.idCard, true);
+    list = await apiMyWaitlist(sessKey(session), true);
+    if (mineTab !== 'waitlist') return;   /* 已切到别的页签 */
   } catch (e) {
     tip.textContent = '';
-    empty.textContent = '加载失败：' + e.message;
-    empty.style.display = '';
-    box.innerHTML = '';
+    box.innerHTML = '<p class="tip">' + t('load_fail') + escapeHtml(e.message) + '</p>';
     return;
   }
 
   myWlList = list;
-  const live = list.filter(function (x) {
-    return x.status === 'waiting' || x.status === 'offered';
-  });
-
-  tip.textContent = '生效中的候补 ' + live.length + ' 条 · 历史 ' + (list.length - live.length) + ' 条';
-  empty.style.display = list.length === 0 ? '' : 'none';
+  const live = list.filter(function (x) { return x.status === 'waiting' || x.status === 'offered'; });
+  tip.textContent = t('wl_live', { a: live.length, b: list.length - live.length });
   if (list.length === 0) {
-    empty.textContent = '还没有候补记录。号源约满时，在时段卡片上点「加入候补」。';
-    box.innerHTML = '';
+    box.innerHTML = '<p class="tip">' + t('wl_empty') + '</p>';
     return;
   }
 
@@ -1979,70 +2261,51 @@ async function renderMyWaitlist() {
   for (let i = 0; i < list.length; i++) {
     const w = list[i];
     const offered = (w.status === 'offered');
-    const live2 = offered || w.status === 'waiting';
-
-    let cls = 'card';
-    if (offered) cls = 'card wl-offer';
-
-    let tagCls = 'tag';
-    if (offered) tagCls = 'tag green';
-    else if (w.status === 'waiting') tagCls = 'tag blue';
-    else if (w.status === 'converted') tagCls = 'tag green';
+    let tagCls = 'badge';
+    if (offered || w.status === 'converted') tagCls = 'badge green';
+    else if (w.status === 'waiting') tagCls = 'badge blue';
+    else tagCls = 'badge grey';
 
     let actions = '';
     if (offered) {
-      actions = `
-        <button class="btn primary" onclick="confirmWl('${w.id}')">确认挂号</button>
-        <button class="btn" onclick="cancelWl('${w.id}')">放弃</button>
-      `;
+      actions = `<button class="btn small primary" onclick="confirmWl('${w.id}')">${t('wl_confirm')}</button>
+                 <button class="btn small" onclick="cancelWl('${w.id}')">${t('wl_giveup')}</button>`;
     } else if (w.status === 'waiting') {
-      actions = `<button class="btn" onclick="cancelWl('${w.id}')">放弃排队</button>`;
+      actions = `<button class="btn small" onclick="cancelWl('${w.id}')">${t('wl_leave')}</button>`;
     }
 
-    let extra = '';
-    if (offered && w.offerExpiresAt) {
-      extra = `<div class="tip">号源为你保留到 ${fmtTime(w.offerExpiresAt)}，过期自动顺延给下一位。</div>`;
-    }
-
-    html += `
-      <div class="${cls}">
-        <div class="card-title">
-          ${w.date} ${w.weekday} ${w.period}
-          <span class="${tagCls}">${WL_STATUS[w.status] || w.status}</span>
-          <span class="tag">第 ${w.position} 位</span>
-        </div>
-        <div class="tip">${deptName(w.deptId)} · ${doctorName(w.doctorId)} ${w.doctorTitle} · ${money(w.fee)}</div>
-        <div class="tip">就诊人：${escapeHtml(w.patientName)} · ${escapeHtml(w.idCard)}
-          ${w.hasEmail ? ' · 已留邮箱，会收到邮件通知' : ' · 未留邮箱，只在站内通知'}</div>
-        <div class="tip">候补号：${w.id}</div>
-        ${extra}
-        ${live2 && actions ? '<div class="actions" style="margin:8px 0 0">' + actions + '</div>' : ''}
-      </div>
-    `;
+    html += '<div class="appt-card' + (offered ? ' wl-offer' : '') + '">'
+      + '<div class="header"><span class="title">' + escapeHtml(deptName(w.deptId)) + ' · ' + escapeHtml(doctorName(w.doctorId)) + '</span>'
+      + '<span class="' + tagCls + '">' + t('wl_s_' + w.status) + (w.status === 'waiting' ? ' · ' + t('wl_pos', { n: w.position }) : '') + '</span></div>'
+      + '<div class="meta">' + escapeHtml(w.date + ' ' + weekdayLabel(w.date) + ' ' + trPeriod(w.period)) + ' · ' + money(w.fee) + '</div>'
+      + '<div class="meta">' + t('f_patient') + colon() + escapeHtml(w.patientName) + ' · ' + escapeHtml(w.idCard)
+      + ' · ' + (w.hasEmail ? t('wl_email_yes') : t('wl_email_no')) + '</div>'
+      + (offered && w.offerExpiresAt ? '<div class="meta" style="color:#2563eb">' + t('wl_keep', { t: fmtTime(w.offerExpiresAt) }) + '</div>' : '')
+      + (actions ? '<div class="actions">' + actions + '</div>' : '')
+      + '</div>';
   }
   box.innerHTML = html;
 }
 
 async function confirmWl(id) {
-  if (!confirm('确认把保留的号挂下来？')) return;
+  if (!confirm(t('wl_confirm_q'))) return;
   try {
     const apt = await apiConfirmWaitlist(id);
-    alert('候补转正成功，挂号单号 ' + apt.id + '，取号序号 ' + pad3(apt.seqNo) + ' 号');
-    renderMyWaitlist();
+    alert(t('wl_ok', { id: apt.id, seq: pad3(apt.seqNo) }));
   } catch (e) {
     alert(e.message);
-    renderMyWaitlist();
   }
+  renderMyWaitlist();
 }
 
 async function cancelWl(id) {
-  if (!confirm('确认放弃这个候补？放弃后位置就没了。')) return;
+  if (!confirm(t('wl_cancel_q'))) return;
   try {
     await apiCancelWaitlist(id);
-    renderMyWaitlist();
   } catch (e) {
     alert(e.message);
   }
+  renderMyWaitlist();
 }
 
 /* 把 ISO 时间显示成「10-29 08:30」这种本地格式 */
@@ -2081,18 +2344,17 @@ async function refreshCaptcha() {
     const c = await apiCaptcha();
     captchaToken = c.token;
     document.getElementById('captchaQuestion').textContent = c.question;
-    document.getElementById('captchaTip').textContent =
-      '算错了可以点「换一题」。这道题 ' + Math.round(c.ttl / 60) + ' 分钟内有效。';
+    document.getElementById('captchaTip').textContent = t('cap_tip', { n: Math.round(c.ttl / 60) });
     document.getElementById('captchaAnswer').focus();
   } catch (e) {
-    document.getElementById('captchaQuestion').textContent = '题目加载失败：' + e.message;
+    document.getElementById('captchaQuestion').textContent = t('cap_load_fail') + e.message;
   }
 }
 
 function submitCaptcha() {
   const answer = document.getElementById('captchaAnswer').value.trim();
   if (!answer) {
-    alert('请填写答案');
+    alert(t('cap_fill'));
     return;
   }
   document.getElementById('captchaMask').style.display = 'none';
@@ -2294,17 +2556,20 @@ async function proxyDeptChange() {
 
 async function submitProxy() {
   const sid = document.getElementById('pxSchedule').value;
-  const name = document.getElementById('pxName').value.trim();
-  const idCard = document.getElementById('pxIdCard').value.trim();
-  const phone = document.getElementById('pxPhone').value.trim();
-  const email = document.getElementById('pxEmail').value.trim();
   const tip = document.getElementById('proxyTip');
-
   if (!sid) { alert('请先选一个时段'); return; }
-  if (!name || !idCard || !phone) { alert('请把姓名、身份证号、手机号都填上'); return; }
+  const nm = readName('pxName');
+  if (!nm.ok) { alert(nm.msg); return; }
+  const doc = readDoc('px');
+  if (!doc.ok) { alert(doc.msg); return; }
+  const ph = readPhone('px');
+  if (!ph.ok) { alert(ph.msg); return; }
+  const em = readEmail('pxEmail');
+  if (!em.ok) { alert(em.msg); return; }
 
   const done = await bookWithCaptcha(sid, {
-    name: name, idCard: idCard, phone: phone, email: email,
+    name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard,
+    phoneCc: ph.phoneCc, phone: ph.phone, email: em.email,
   }, 'proxy');
 
   if (!done.ok) {
@@ -2315,8 +2580,7 @@ async function submitProxy() {
   tip.textContent = '已代约：' + done.apt.id + '（取号序号 ' + pad3(done.apt.seqNo)
     + ' 号）· 审计日志已记成「代约:工号」';
   document.getElementById('pxName').value = '';
-  document.getElementById('pxIdCard').value = '';
-  document.getElementById('pxPhone').value = '';
+  document.getElementById('pxDoc').innerHTML = docFieldsHtml('px', {}, true);
   document.getElementById('pxEmail').value = '';
   proxyDeptChange();
 }
@@ -2536,7 +2800,8 @@ function applyBigFont(on) {
 
   const btn = document.getElementById('fontToggle');
   if (btn) {
-    btn.textContent = on ? '标准字号' : '大字版';
+    const key = on ? 'normal_font' : 'big_font';
+    btn.innerHTML = '<span data-i18n="' + key + '">' + t(key) + '</span>';
     btn.className = on ? 'btn small on' : 'btn small';
   }
   /* 字号变了按钮宽度跟着变，后台页签要重新排 */

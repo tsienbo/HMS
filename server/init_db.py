@@ -19,6 +19,9 @@ from validators import hash_password
 HERE = Path(__file__).resolve().parent
 SCHEMA_FILE = HERE / "schema.sql"
 SCHEMA_V3_FILE = HERE / "schema_v3.sql"
+SCHEMA_INTL_FILE = HERE / "schema_intl.sql"        # v3.5 国际化：多证件、证件键 doc_key、实名校验
+SCHEMA_DICT_FILE = HERE / "schema_dict.sql"        # 科室搜索词典（表 + 索引 + 搜索函数）
+DICT_CSV = HERE / "data" / "dept_keywords.csv"      # 词典数据，由 tools/build_dept_keywords.py 生成
 
 # v2 的核心表（顺序按依赖排）。缺任何一张都说明库是坏的 → 整份重建。
 CORE_TABLES = ["departments", "doctors", "patients", "schedules",
@@ -28,14 +31,20 @@ CORE_TABLES = ["departments", "doctors", "patients", "schedules",
 # 那是「加功能」不是「修坏库」，重建会把用户的挂号记录清掉。
 V3_TABLES = ["waitlist", "notification_outbox", "access_log", "blacklist"]
 
-EXPECTED_TABLES = CORE_TABLES + V3_TABLES
+# v3.x 陆续加的表（患者凭证、验证码、实名校验）与科室搜索词典 —— 只用于对象清单核对
+OTHER_TABLES = ["patient_sessions", "verification_codes", "citizen_registry",
+                "identity_verify_log", "dept_keywords"]
+
+EXPECTED_TABLES = CORE_TABLES + V3_TABLES + OTHER_TABLES
 
 # 视图 / 触发器 / 函数：少一个就说明 schema 没跑全
 EXPECTED_VIEWS = ["v_available_schedules", "v_appointment_detail",
                   "v_doctor_workload", "v_appointment_public",
                   "v_waitlist_detail"]
 EXPECTED_TRIGGERS = 20
-EXPECTED_FUNCTIONS = 15
+# 14 个触发器函数 + fn_offer_next_waitlist + fn_verify_identity + fn_search_departments
+# + 证件工具 5 个（fn_gb11643_ok / fn_doc_valid / fn_doc_key / fn_mask_doc / fn_norm_name）
+EXPECTED_FUNCTIONS = 22
 
 
 # ------------------------------------------------------------
@@ -97,6 +106,8 @@ def drop_v3_tables():
     顺序：先删引用别人的（outbox → waitlist），再删独立的。
     """
     query("""
+        DROP TABLE IF EXISTS dept_keywords       CASCADE;
+        DROP TABLE IF EXISTS patient_sessions    CASCADE;
         DROP TABLE IF EXISTS notification_outbox CASCADE;
         DROP TABLE IF EXISTS waitlist            CASCADE;
         DROP TABLE IF EXISTS access_log          CASCADE;
@@ -184,6 +195,70 @@ def seed_reference_data():
           % (len(DEPARTMENTS), len(DOCTORS), len(USERS)))
     for u in USERS:
         print("      管理员  %s / %s（%s）" % (u["username"], u["password"], u["displayName"]))
+
+
+def add_missing_reference_data():
+    """已有库里补上 seed_data 新增的科室与医生（按编号判重，不改动已有的行）。
+
+    基础数据不为空时 seed_reference_data 不会再跑，新增的科室要靠这里补进去；
+    新医生的排班由随后的 ensure_schedules 补齐。
+    """
+    nd = nr = 0
+    for d in DEPARTMENTS:
+        nd += query(
+            """INSERT INTO departments (id, name, description, location) VALUES (%s, %s, %s, %s)
+               ON CONFLICT (id) DO NOTHING""",
+            [d["id"], d["name"], d["description"], d.get("location") or ""],
+        ).rowcount
+    for d in DOCTORS:
+        nr += query(
+            """INSERT INTO doctors (id, dept_id, name, title, fee) VALUES (%s, %s, %s, %s, %s)
+               ON CONFLICT (id) DO NOTHING""",
+            [d["id"], d["deptId"], d["name"], d["title"], d["fee"]],
+        ).rowcount
+    if nd or nr:
+        print("  · 补充基础数据：新增科室 %d / 医生 %d" % (nd, nr))
+
+
+# ------------------------------------------------------------
+# 科室搜索词典
+# ------------------------------------------------------------
+def run_schema_intl():
+    """v3.5 国际化（幂等）：证件类型、证件键、国际手机号、实名校验函数、脱敏视图。"""
+    query(SCHEMA_INTL_FILE.read_text(encoding="utf-8"))
+
+
+def run_schema_dict():
+    """建词典表、索引与搜索函数（幂等）。"""
+    query(SCHEMA_DICT_FILE.read_text(encoding="utf-8"))
+
+
+def ensure_dept_keywords():
+    """把词典 CSV 导入 dept_keywords（表结构由 run_schema_dict 建好）。
+
+    表为空，或条数与 CSV 不一致（重新生成过词典），就整表替换；一致则跳过。
+    放在基础数据之后：词典里的 dept_id 外键引用 departments。
+    灌基础数据时 TRUNCATE departments ... CASCADE 会连带清空词典，这里会重新导入。
+    """
+    if not DICT_CSV.exists():
+        print("  [!!] 缺少词典文件 %s，科室搜索只能按科室名匹配" % DICT_CSV)
+        return
+    with open(DICT_CSV, encoding="utf-8") as f:
+        want = sum(1 for _ in f) - 1                     # 去掉表头
+    n = query("SELECT COUNT(*)::int AS n FROM dept_keywords").rows[0]["n"]
+    if n == want:
+        print("  · 科室搜索词典已就绪（%d 条）" % n)
+        return
+    with psycopg.connect(dbname=DB_NAME, **DB_CONFIG) as conn:
+        # 删旧数据与导入放在同一个事务里：导入失败就回滚，词典不会变空
+        with conn.cursor() as cur, open(DICT_CSV, encoding="utf-8") as f:
+            cur.execute("DELETE FROM dept_keywords")
+            with cur.copy("COPY dept_keywords (term, kind, dept_id, other_dept, weight, pinyin, abbr) "
+                          "FROM STDIN WITH (FORMAT csv, HEADER true, NULL '')") as cp:
+                while chunk := f.read(1 << 16):
+                    cp.write(chunk)
+    n = query("SELECT COUNT(*)::int AS n FROM dept_keywords").rows[0]["n"]
+    print("  · 科室搜索词典导入 %d 条（疾病 / 症状 / 科室名 → 科室）" % n)
 
 
 # ------------------------------------------------------------
@@ -289,6 +364,10 @@ def init_database(force=False):
             print("  · v3 结构缺失：%s → 叠加增量" % ", ".join(v3["missing"]))
             run_schema_v3()
 
+    # --- v3.5 国际化与科室搜索词典的表结构（幂等，每次都跑）---
+    run_schema_intl()
+    run_schema_dict()
+
     # --- 对象清单（视图 / 函数 / 触发器有没有建全）---
     obj = inspect_objects()
     print("  · 对象清单：表 %d / 视图 %d / 函数 %d / 触发器 %d / 约束 %d / 索引 %d"
@@ -317,6 +396,10 @@ def init_database(force=False):
     else:
         print("  · 基础数据完整（科室 %d / 医生 %d / 账号 %d），跳过灌入"
               % (ref["departments"], ref["doctors"], ref["users"]))
+        add_missing_reference_data()
+
+    # --- 科室搜索词典 ---
+    ensure_dept_keywords()
 
     # --- 排班与号源 ---
     # 每次都补：ensure_schedules 按「医生 + 日期 + 时段」拼出的固定编号判重，
