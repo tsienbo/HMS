@@ -1575,21 +1575,32 @@ def resolve_patient(patient, email, trusted=False):
             code="REALNAME_MISMATCH"), 400)
 
     # 证件键 doc_key 是生成列，由证件类型 + 国籍 + 证件号算出；按它判断「是不是同一个人」
+    #
+    # ★ 性别一经记入档案，患者端不能再改：护照这类证件的性别是自己选的，
+    #   以前每次挂号都用这次填的覆盖档案，于是能先选「男」挂男科、再选「女」挂妇产科。
+    #   现在档案里已有性别且与这次不同时，WHERE 不成立 → 不更新、RETURNING 为空 → 拒绝。
+    #   判断与写入是同一条语句，并发提交也不会一笔按男、一笔按女落库。
+    #   确实登记错了，由窗口在后台「病人资料」里更正（会记访问日志）。
     r = query_new_id(
         """INSERT INTO patients (id, name, id_type, nationality, id_card, phone_cc, phone, email, sex)
            VALUES ('P' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
                    %s, %s, %s, %s, %s, %s, %s, %s)
            ON CONFLICT (doc_key) DO UPDATE
               SET name     = EXCLUDED.name,
-                  sex      = EXCLUDED.sex,
+                  sex      = COALESCE(patients.sex, EXCLUDED.sex),
                   phone_cc = EXCLUDED.phone_cc,
                   phone    = EXCLUDED.phone,
                   email    = COALESCE(EXCLUDED.email, patients.email),
                   updated_at = NOW()
+            WHERE patients.sex IS NULL OR patients.sex = EXCLUDED.sex
            RETURNING id""",
         [patient["name"], patient["idType"], patient["nationality"], patient["idCard"],
          patient["phoneCc"], patient["phone"], email, patient["sex"]],
     )
+    if r.rowcount == 0:
+        return None, None, None, (jsonify(
+            error="所选性别与该证件已登记的性别不一致，如需更正请到窗口办理",
+            code="SEX_MISMATCH"), 400)
     pid = r.rows[0]["id"]
     return pid, (None if trusted else issue_patient_token(pid)), None, None
 
@@ -2369,7 +2380,10 @@ def proxy_booking():
                 ), 428
 
         # 窗口人员当面核验过证件，允许顺手更新联系方式
-        patient_id, _, _, _ = resolve_patient(patient, email, trusted=True)
+        # 实名不符 / 性别与档案不一致都要把原因回给窗口人员，不能吞掉（以前吞掉后 patient_id 为空，只会报一句看不懂的数据库错误）
+        patient_id, _, _, err = resolve_patient(patient, email, trusted=True)
+        if err:
+            return err
 
         appt_no = generate_appointment_no()
         ins = query_new_id(
