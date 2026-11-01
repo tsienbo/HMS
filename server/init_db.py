@@ -82,6 +82,24 @@ def inspect_schema():
     return {"missing": missing, "complete": not missing}
 
 
+# 存业务数据的表：这些表里有行，--init 就绝不能走 DROP / TRUNCATE
+BUSINESS_TABLES = ["patients", "appointments", "waitlist"]
+
+
+def business_row_count():
+    """业务表（就诊人 / 挂号 / 候补）里一共有多少行；表不存在按 0 算。"""
+    r = query(
+        """SELECT tablename FROM pg_tables
+            WHERE schemaname = 'public' AND tablename = ANY(%s::text[])""",
+        [BUSINESS_TABLES],
+    )
+    total = 0
+    for t in (x["tablename"] for x in r.rows):
+        # 表名来自上面的白名单，不是用户输入
+        total += query("SELECT COUNT(*)::int AS n FROM %s" % t).rows[0]["n"]
+    return total
+
+
 def inspect_v3():
     """v3 的四张表在不在。不在只补 v3，不重建。"""
     r = query(
@@ -130,7 +148,7 @@ def run_schema_v3():
     """叠加 v3 增量结构（幂等，不删任何已有对象）。"""
     text = SCHEMA_V3_FILE.read_text(encoding="utf-8")
     query(text)
-    print("  · v3 增量结构已叠加（候补 / 发件箱 / 访问日志 / 黑名单 + 6 触发器）")
+    print("  · v3 增量结构已叠加 / 更新（候补 / 发件箱 / 访问日志 / 黑名单 + 触发器函数）")
 
 
 def inspect_objects():
@@ -175,8 +193,8 @@ def seed_reference_data():
 
     for d in DEPARTMENTS:
         query(
-            "INSERT INTO departments (id, name, description, location) VALUES (%s, %s, %s, %s)",
-            [d["id"], d["name"], d["description"], d.get("location") or ""],
+            "INSERT INTO departments (id, name, description, location, sex_limit) VALUES (%s, %s, %s, %s, %s)",
+            [d["id"], d["name"], d["description"], d.get("location") or "", d.get("sexLimit")],
         )
     for d in DOCTORS:
         query(
@@ -206,9 +224,9 @@ def add_missing_reference_data():
     nd = nr = 0
     for d in DEPARTMENTS:
         nd += query(
-            """INSERT INTO departments (id, name, description, location) VALUES (%s, %s, %s, %s)
+            """INSERT INTO departments (id, name, description, location, sex_limit) VALUES (%s, %s, %s, %s, %s)
                ON CONFLICT (id) DO NOTHING""",
-            [d["id"], d["name"], d["description"], d.get("location") or ""],
+            [d["id"], d["name"], d["description"], d.get("location") or "", d.get("sexLimit")],
         ).rowcount
     for d in DOCTORS:
         nr += query(
@@ -216,8 +234,16 @@ def add_missing_reference_data():
                ON CONFLICT (id) DO NOTHING""",
             [d["id"], d["deptId"], d["name"], d["title"], d["fee"]],
         ).rowcount
-    if nd or nr:
-        print("  · 补充基础数据：新增科室 %d / 医生 %d" % (nd, nr))
+    nu = 0
+    for u in USERS:
+        nu += query(
+            """INSERT INTO users (id, username, password_hash, display_name, status)
+               VALUES (%s, %s, %s, %s, 'active')
+               ON CONFLICT DO NOTHING""",
+            [u["id"], u["username"], hash_password(u["password"]), u["displayName"]],
+        ).rowcount
+    if nd or nr or nu:
+        print("  · 补充基础数据：新增科室 %d / 医生 %d / 后台账号 %d" % (nd, nr, nu))
 
 
 # ------------------------------------------------------------
@@ -349,7 +375,18 @@ def init_database(force=False):
     elif schema["complete"]:
         print("  · 表结构完整，跳过重建（如需清空重建请用 --force）")
     else:
-        print("  · 表结构不完整，缺失：%s → 重建" % ", ".join(schema["missing"]))
+        # ★ 只有业务表里一行数据都没有时才允许自动重建（全新空库 / 建了一半失败的库）。
+        #   有数据就停下来：schema.sql 里是 DROP TABLE ... CASCADE，缺一张 user_sessions
+        #   也会把就诊人和挂号一起删掉。要重建必须由人显式加 --force。
+        rows = business_row_count()
+        if rows:
+            raise RuntimeError(
+                "表结构不完整（缺失：%s），但就诊人 / 挂号 / 候补表里还有 %d 行数据。\n"
+                "为避免清空数据，没有自动重建。请先用 pg_dump 备份，再二选一：\n"
+                "  · 按 server/schema.sql 里对应的 CREATE TABLE 手工补建缺失的表，再重新 --init\n"
+                "  · 确认可以清空：python server/app.py --force 整库重建，之后用备份恢复数据"
+                % (", ".join(schema["missing"]), rows))
+        print("  · 表结构不完整，缺失：%s，且库里没有业务数据 → 重建" % ", ".join(schema["missing"]))
         # 重建核心表时 v3 的表也会变成孤儿（外键指向新建的同名表），一起清掉
         drop_v3_tables()
         run_schema()
@@ -357,12 +394,12 @@ def init_database(force=False):
 
     # --- v3 增量（只补缺，不重建）---
     if not force:
+        # schema_v3.sql 是幂等的（IF NOT EXISTS / CREATE OR REPLACE），每次都重跑：
+        # 触发器函数修了 bug，已有库 --init 一下就能用上新版本，不用等「缺表」才升级
         v3 = inspect_v3()
-        if v3["complete"]:
-            print("  · v3 结构已就绪")
-        else:
+        if not v3["complete"]:
             print("  · v3 结构缺失：%s → 叠加增量" % ", ".join(v3["missing"]))
-            run_schema_v3()
+        run_schema_v3()
 
     # --- v3.5 国际化与科室搜索词典的表结构（幂等，每次都跑）---
     run_schema_intl()
@@ -385,8 +422,13 @@ def init_database(force=False):
                (SELECT COUNT(*) FROM users)::int       AS users
     """).rows[0]
     ref_empty = not (ref["departments"] and ref["doctors"] and ref["users"])
-
-    if force or ref_empty:
+    # 基础数据缺了但已经有挂号：seed_reference_data 的 TRUNCATE ... CASCADE 会连带清掉排班与挂号，
+    # 这种情况只按编号补缺（INSERT ... ON CONFLICT DO NOTHING），不清空
+    if ref_empty and not force and business_row_count():
+        print("  · 基础数据不完整（科室 %d / 医生 %d / 账号 %d），但已有业务数据 → 只补缺，不清空"
+              % (ref["departments"], ref["doctors"], ref["users"]))
+        add_missing_reference_data()
+    elif force or ref_empty:
         if force and not ref_empty:
             print("  · --force：清空基础数据后重新灌入")
         if ref_empty and not force:

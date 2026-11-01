@@ -15,6 +15,8 @@
 import os
 import queue
 import threading
+import time
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 
 import psycopg
@@ -288,7 +290,9 @@ def as_iso(v):
 
 def map_department(r):
     return {"id": r["id"], "name": r["name"],
-            "desc": r["description"], "location": r.get("location") or ""}
+            "desc": r["description"], "location": r.get("location") or "",
+            # 性别限制：None 不限，"F" 只接诊女性，"M" 只接诊男性
+            "sexLimit": r.get("sex_limit")}
 
 
 def map_doctor(r):
@@ -403,8 +407,41 @@ def map_appointment(r, mask_id_card, mask_phone=False):
     }
 
 
+def query_new_id(sql, params=None, operator=None, tries=5):
+    """插入「主键 = 前缀 + 毫秒时间戳」的行，主键撞了就重试。
+
+    挂号单 / 患者 / 候补的编号是 'A' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS')，
+    同一毫秒里两个请求会生成同一个编号。撞的是主键（*_pkey）就稍等再插一次，
+    clock_timestamp() 每次重新取，第二次基本就不会再撞；别的唯一约束照常报错。
+    """
+    for i in range(tries):
+        try:
+            return query(sql, params, operator)
+        except psycopg.errors.UniqueViolation as err:
+            name = getattr(err.diag, "constraint_name", "") or ""
+            if not name.endswith("_pkey") or i == tries - 1:
+                raise
+            time.sleep(0.002)
+
+
+@contextmanager
+def transaction(operator=None):
+    """多条语句放进一个事务：with transaction() as run: run(sql, params) ...
+
+    任何一条出错整体回滚。operator 的作用同 query()（审计日志里的操作人）。
+    """
+    conn = pool.acquire()
+    try:
+        with conn.transaction():
+            if operator is not None:
+                conn.execute("SELECT set_config('app.operator', %s, true)", [operator])
+            yield lambda sql, params=None: _run(conn, sql, params)
+    finally:
+        pool.release(conn)
+
+
 __all__ = [
-    "DB_CONFIG", "DB_NAME", "Result", "pool", "query", "health_check",
+    "DB_CONFIG", "DB_NAME", "Result", "pool", "query", "query_new_id", "transaction", "health_check",
     "db_error", "as_float", "as_date_str", "as_iso",
     "mask_id_card_str", "mask_phone_str",
     "map_department", "map_doctor", "map_schedule", "map_appointment",

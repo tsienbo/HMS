@@ -16,3 +16,6 @@ server/mail.env
 
 # 调试脚本 / 临时文件
 .tmp/
+
+# 本机初始化标记（旧版 start.py 用过，现在按实际库状态判断）
+.db-initialized

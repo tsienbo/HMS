@@ -74,16 +74,24 @@ python server/app.py                # 启动服务
 | 命令 | 作用 |
 |---|---|
 | `python server/app.py` | 启动 Web 服务 |
-| `python server/app.py --init` | 建库建表、补齐缺失对象和基础数据。**幂等，不删除已有数据** |
+| `python server/app.py --init` | 建库建表、补齐缺失对象和基础数据、重跑 `schema_v3.sql` 更新触发器函数。**幂等，不删除已有数据**：表不完整但库里有就诊人 / 挂号时会停下报错，不会自动重建 |
 | `python server/app.py --force` | **清空重建**全部表和数据，慎用 |
 | `python server/app.py --migrate` | 只执行 v3 增量升级（`schema_v3.sql`），不动已有数据 |
 | `python server/app.py --worker [--interval 60]` | 常驻后台任务：就诊提醒、候补过期顺延、发信 |
 | `python server/app.py --remind [--force]` | 手动跑一轮上述任务（`--force` 忽略发送时间窗） |
 | `python server/app.py --flush-mail [--limit 50]` | 发送发件箱中待发邮件 |
 | `python server/app.py --test-mail [地址]` | 发一封测试邮件，检查 SMTP 配置 |
+| `python server/app.py --set-password admin` | 修改后台账号密码（交互输入、不回显），并注销该账号所有已登录会话。**部署前必须改掉初始密码**，服务启动时若仍是初始密码会提示 |
 
 > 提醒与候补顺延由 `--worker` 驱动，Web 服务本身不启动后台线程。
-> 不运行 worker 时，管理端「通知发件箱」页签的「立即扫描一轮」按钮可手动触发。
+> 用 `start.py` 启动时会同时拉起 worker（随服务一起停止）；单独部署 Web 服务时，worker 要另外配一个常驻进程。
+> 管理端「通知发件箱」页签的「立即扫描一轮」按钮也可手动触发；发件箱按行原子领取，worker 与手动扫描并发也不会重复发信。
+>
+> **反向代理**：默认只认 TCP 连接的对端 IP，不相信请求头 `X-Forwarded-For`（直接暴露端口时它可以随便伪造，用来绕过限流）。
+> 放在 nginx 等代理后面时，设置环境变量 `HMS_TRUSTED_PROXIES=127.0.0.1`（代理的地址，逗号分隔），并且不要让外部直接访问 3000 端口。
+>
+> **医院自助机**：自助机上不保存任何就诊人信息（挂号成功 60 秒后、或空闲 90 秒自动清除），个人手机 / 电脑默认记住就诊人。
+> 两种方式让系统认出自助机：① 在自助机上用管理员账号登录，后台页顶部点「将本机设为医院自助机」；② 设置环境变量 `HMS_KIOSK_IPS=10.8.1.21,10.8.2.0/28`（只写自助机自己的地址，不要写整个医院网段）。
 
 ---
 

@@ -108,14 +108,12 @@ def check_id_card(raw):
     if not _gb11643_ok(v):
         return False, "身份证号校验位错误，请核对", None
 
-    year = int(v[6:10])
-    month = int(v[10:12])
-    day = int(v[12:14])
-    if year < 1900 or year > date.today().year:
-        return False, "身份证中的出生年份不合法", None
-    if month < 1 or month > 12:
-        return False, "身份证中的出生月份不合法", None
-    if day < 1 or day > 31:
+    # 出生日期必须是日历上真实存在的一天（2000-02-31 这种校验位碰巧对的也要拦），且不晚于今天
+    try:
+        born = date(int(v[6:10]), int(v[10:12]), int(v[12:14]))
+    except ValueError:
+        return False, "身份证中的出生日期不存在，请核对", None
+    if born.year < 1900 or born > date.today():
         return False, "身份证中的出生日期不合法", None
 
     return True, None, v
@@ -172,6 +170,24 @@ def check_document(id_type, nationality, raw):
             return False, "请选择护照签发国家 / 地区", None
 
     return True, None, {"idType": t, "nationality": nat, "idCard": v, "docKey": doc_key(t, nat, v)}
+
+
+def doc_sex(id_type, number):
+    """身份证、港澳台居住证从第 17 位读出性别（奇数男、偶数女）；其他证件读不出，返回 None。"""
+    if id_type in ("CN_ID", "HMT_RES") and _RE_ID_CARD.match(number or ""):
+        return "M" if int(number[16]) % 2 == 1 else "F"
+    return None
+
+
+def resolve_sex(id_type, number, raw_sex):
+    """(ok, msg, sex)：证件能读出性别就以证件为准；读不出就必须由患者选择 M / F。"""
+    sex = doc_sex(id_type, number)
+    if sex:
+        return True, None, sex
+    v = str(raw_sex or "").strip().upper()
+    if v not in ("M", "F"):
+        return False, "请选择性别", None
+    return True, None, v
 
 
 def check_doc_key(raw):
@@ -235,10 +251,13 @@ def check_patient(patient):
     ok, msg, doc = check_document(patient.get("idType"), patient.get("nationality"), patient.get("idCard"))
     if not ok:
         return False, msg, None
+    ok, msg, sex = resolve_sex(doc["idType"], doc["idCard"], patient.get("sex"))
+    if not ok:
+        return False, msg, None
 
     cc = str(patient.get("phoneCc") or "86").strip().lstrip("+")
     ok, msg, phone = check_phone(patient.get("phone"), cc)
     if not ok:
         return False, msg, None
 
-    return True, None, dict(doc, name=name, phone=phone, phoneCc=cc)
+    return True, None, dict(doc, name=name, phone=phone, phoneCc=cc, sex=sex)

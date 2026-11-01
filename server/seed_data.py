@@ -20,14 +20,14 @@ DEPARTMENTS = [
     {"id": "D04", "name": "骨科", "description": "骨折、关节疼痛、颈腰椎疾病", "location": "门诊楼 3 层西区"},
     {"id": "D05", "name": "眼科", "description": "视力检查、结膜炎、白内障筛查", "location": "门诊楼 4 层"},
     # 以下 8 个科室按科室搜索词典（开源医疗知识图谱）里的就诊科室补齐
-    {"id": "D06", "name": "妇产科", "description": "月经不调、妇科炎症、孕期检查与产后复查", "location": "门诊楼 4 层东区"},
+    {"id": "D06", "name": "妇产科", "description": "月经不调、妇科炎症、孕期检查与产后复查", "location": "门诊楼 4 层东区", "sexLimit": "F"},
     {"id": "D07", "name": "皮肤科", "description": "湿疹、痤疮、皮炎、荨麻疹、真菌感染", "location": "门诊楼 4 层西区"},
     {"id": "D08", "name": "耳鼻喉科", "description": "鼻炎、咽喉炎、中耳炎、听力下降", "location": "门诊楼 5 层东区"},
     {"id": "D09", "name": "口腔科", "description": "牙痛、龋齿、牙周病、口腔溃疡", "location": "门诊楼 5 层西区"},
     {"id": "D10", "name": "中医科", "description": "中医调理、针灸推拿、慢性病调养", "location": "门诊楼 6 层"},
     {"id": "D11", "name": "精神心理科", "description": "失眠、焦虑、抑郁、心理咨询", "location": "门诊楼 6 层南侧"},
     {"id": "D12", "name": "肿瘤科", "description": "肿瘤筛查、放化疗随访、肿瘤综合治疗", "location": "医技楼 3 层"},
-    {"id": "D13", "name": "男科", "description": "前列腺疾病、男性泌尿生殖问题", "location": "门诊楼 5 层南侧"},
+    {"id": "D13", "name": "男科", "description": "前列腺疾病、男性泌尿生殖问题", "location": "门诊楼 5 层南侧", "sexLimit": "M"},
 ]
 
 # 后台账号。这里写的是明文，灌库时派生成散列再存，明文不落库。

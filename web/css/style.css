@@ -413,6 +413,21 @@ body.big .hero .assist { font-size: 22px; }
 .progress-bar .step em { font-style: normal; }
 
 /* 语言下拉：和顶栏按钮同高 */
+/* 危险操作（删除档案）：红色，和普通按钮区分开 */
+.btn.danger { color: #b91c1c; border-color: #fca5a5; background: #fff5f5; }
+.btn.danger:hover { background: #fee2e2; border-color: #ef4444; }
+/* 顶栏「管理员已登录」：绿色标签样式，和普通按钮区分开 */
+.btn.staff-on { color: #065f46; background: #ecfdf5; border-color: #6ee7b7; white-space: nowrap; }
+.btn.staff-on:hover { background: #d1fae5; }
+.staff-bar { display: none; }
+@media (max-width: 700px) {
+  #staffBadge { display: none !important; }
+  .staff-bar.on {
+    display: block; padding: 6px 12px; text-align: center; cursor: pointer;
+    font-size: 15px; font-weight: 600; color: #065f46;
+    background: #ecfdf5; border-top: 1px solid #a7f3d0;
+  }
+}
 .lang-sel { width: auto; min-height: 36px; padding: 4px 8px; font-size: 14px; border-radius: 8px; }
 
 /* 手机号：区号下拉 + 号码输入框并排 */
@@ -650,7 +665,8 @@ body.big .center-tabs .btn, body.big #mineTabs .btn { font-size: 22px; padding: 
   overflow: auto;
 }
 .modal.wide { max-width: 720px; }
-.modal h3 { font-size: 17px; margin-bottom: 10px; }
+.modal h3 { font-size: 23px; margin-bottom: 10px; }   /* 弹窗标题跟着标准字号的 h3 走 */
+body.big .modal h3 { font-size: 25px; }
 .modal p { display: flex; align-items: center; gap: 8px; }
 .modal label { width: 72px; flex-shrink: 0; color: #4b5563; }
 .modal input[type="text"] { flex: 1; min-width: 0; }
@@ -754,4 +770,44 @@ body.big .appt-card .meta { font-size: 20px; }
   body.big h1 { font-size: 32px; }   /* 首页标题在手机上保持一行 */
   /* 顶栏的语言 / 字号 / 退出按钮不跟着放大，给医院名留位置 */
   body.big .topbar select, body.big .topbar .btn { font-size: 14px; padding: 6px 8px; }
+}
+
+/* 挂号表单 / 我的资料里的「在本机记住就诊人」 */
+.remember-row { display: flex; flex-direction: column; gap: 2px; margin: 12px 0 4px; }
+.remember-row label { display: flex; align-items: center; gap: 8px; font-weight: 600; width: auto; cursor: pointer; }
+.remember-row input[type="checkbox"] { width: 22px; height: 22px; flex: 0 0 auto; }
+
+/* 医院自助机提示 / 后台本机模式 */
+.kiosk-note { margin: 12px 0 4px; padding: 10px 12px; border-radius: 8px; background: #eff6ff; color: #1e3a8a; font-weight: 600; }
+.kiosk-setting { margin: 4px 0 8px; }
+
+/* ---------- 可搜索下拉框（enhanceSelect） ---------- */
+.ss-wrap { position: relative; display: block; min-width: 0; }
+.ss-wrap > select.searchable { display: none; }
+.ss-input {
+  width: 100%; cursor: pointer; padding-right: 32px;
+  background-image: linear-gradient(45deg, transparent 50%, #6b7280 50%), linear-gradient(135deg, #6b7280 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 12px) 50%;
+  background-size: 6px 6px; background-repeat: no-repeat;
+}
+.ss-wrap.open .ss-input { cursor: text; }
+.ss-list {
+  display: none; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 60;
+  max-height: 300px; overflow-y: auto; background: #fff;
+  border: 1px solid #c4c9d0; border-radius: 8px; box-shadow: 0 8px 24px rgba(15, 23, 42, .15);
+}
+.ss-wrap.open .ss-list { display: block; }
+.ss-opt { padding: 10px 14px; cursor: pointer; line-height: 1.35; }
+.ss-opt:hover, .ss-opt.active { background: #eef3ff; color: #1d4ed8; }
+.ss-opt.sel { font-weight: 700; }
+.ss-empty { padding: 10px 14px; color: #6b7280; }
+/* 放在原来 select 的位置上，占位规则照搬 select 的 */
+.box p > .ss-wrap, .modal p > .ss-wrap, #patientForm p > .ss-wrap { flex: 1; max-width: 100%; }
+.phone-row .ss-wrap { flex: 0 0 auto; width: 9.5em; }
+.filters .ss-wrap { min-width: 170px; }
+@media (max-width: 700px) {
+  .box p > .ss-wrap, .modal p > .ss-wrap, #patientForm p > .ss-wrap { flex: 1 1 100%; }
+  .phone-row .ss-wrap { width: 8.5em; }
+  .filters .ss-wrap { flex: 1 1 calc(50% - 4px); min-width: 0; }
+  .ss-list { max-height: 45vh; }
 }

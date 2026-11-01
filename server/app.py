@@ -31,6 +31,7 @@
 """
 
 import hashlib
+import ipaddress
 import os
 import re
 import secrets
@@ -45,11 +46,11 @@ import guard
 from db import (
     as_date_str, as_float, as_iso, db_error, health_check, map_appointment,
     map_department, map_doctor, map_schedule, mask_id_card_str, mask_phone_str,
-    pool, query,
+    pool, query, query_new_id, transaction,
 )
 from seed_data import SESSION_TTL_HOURS
 from validators import (check_doc_key, check_document, check_email, check_name, check_phone,
-                         check_patient, verify_password)
+                         check_patient, doc_sex, resolve_sex, verify_password)
 
 # 生成随机预约单号（10 位大写字母+数字，查重后返回）
 _APPT_NO_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -126,10 +127,35 @@ def throttle():
     return resp
 
 
+# 只有直连本服务的是这些地址（自己部署的反向代理）时，才相信 X-Forwarded-For。
+# 例：HMS_TRUSTED_PROXIES=127.0.0.1  （nginx 和本服务在同一台机器）
+# 不配置就一律用 TCP 连接的对端地址 —— 直接暴露端口时 XFF 谁都能随便填，
+# 信了它，限流能被轮换 IP 绕过，访问日志里的来源 IP 也能被伪造。
+TRUSTED_PROXIES = {x.strip() for x in os.environ.get("HMS_TRUSTED_PROXIES", "").split(",") if x.strip()}
+
+
+# 医院自助机的 IP（单个地址或网段，逗号分隔），例：HMS_KIOSK_IPS=10.8.1.21,10.8.2.0/28
+# 只写自助机本身，不要写整个医院网段 —— 病人手机连医院 Wi-Fi 也在那个网段里。
+KIOSK_NETS = []
+for _x in os.environ.get("HMS_KIOSK_IPS", "").split(","):
+    if _x.strip():
+        try:
+            KIOSK_NETS.append(ipaddress.ip_network(_x.strip(), strict=False))
+        except ValueError:
+            print("  [!!] HMS_KIOSK_IPS 里有无法识别的地址：%s" % _x.strip())
+
+
 def client_ip():
-    """取客户端 IP。反向代理后面取 X-Forwarded-For 的第一段。"""
-    fwd = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
-    return fwd or request.remote_addr or "-"
+    """取客户端 IP。默认就是连接对端；配置了可信代理且请求确实来自它，才取 XFF 里最右边那个非代理地址。"""
+    peer = request.remote_addr or "-"
+    if peer not in TRUSTED_PROXIES:
+        return peer
+    hops = [h.strip() for h in (request.headers.get("X-Forwarded-For") or "").split(",") if h.strip()]
+    # 从右往左跳过自己的代理：最左边的值是客户端自己填的，最不可信
+    for h in reversed(hops):
+        if h not in TRUSTED_PROXIES:
+            return h[:45]
+    return peer
 
 
 # ============================================================
@@ -390,7 +416,7 @@ def auth_me():
 @app.get("/api/departments")
 def departments():
     try:
-        r = query("SELECT id, name, description, location FROM departments ORDER BY id")
+        r = query("SELECT id, name, description, location, sex_limit FROM departments ORDER BY id")
         return jsonify([map_department(x) for x in r.rows])
     except Exception as err:                                  # noqa: BLE001
         app.logger.error("[科室列表] %s", err)
@@ -536,11 +562,18 @@ def patient_mine_patch():
         if not ok:
             return jsonify(error=msg), 400
 
+        # 改名要连人口库（citizen_registry）一起改，否则以后用新名字实名校验会失败、旧名字反而能过。
+        # 能走到这里的请求已经持有本人凭证（实名校验通过后签发），所以把它当作受控的改名流程。
+        # 一条语句里两个 UPDATE（CTE），要么都成功要么都不做。
         upd = query(
-            """UPDATE patients
-                  SET name = %s, phone_cc = %s, phone = %s, email = NULLIF(%s, ''), updated_at = NOW()
-                WHERE id = %s
-            RETURNING id""",
+            """WITH u AS (
+                 UPDATE patients
+                    SET name = %s, phone_cc = %s, phone = %s, email = NULLIF(%s, ''), updated_at = NOW()
+                  WHERE id = %s
+              RETURNING id, doc_key, name)
+               , r AS (
+                 UPDATE citizen_registry c SET name = u.name FROM u WHERE c.id_card = u.doc_key)
+               SELECT id FROM u""",
             [name, phone_cc, phone, email, pid],
         )
         if upd.rowcount == 0:
@@ -687,7 +720,7 @@ def create_appointment():
         # 医生和价格都从排班行上就地取：请求体里传的 doctorId / fee 一律不认。
         # 排班不存在时这条语句影响 0 行（触发器不会触发），直接回 404。
         appt_no = generate_appointment_no()
-        ins = query(
+        ins = query_new_id(
             """INSERT INTO appointments
                      (id, appointment_no, seq_no, schedule_id, doctor_id, patient_id, fee, status)
                SELECT 'A' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
@@ -757,6 +790,33 @@ def patient_auth_realname():
 # ------------------------------------------------------------
 # 患者身份验证（备用）：身份证号 → 向档案登记的手机/邮箱发码 → 换凭证
 # ------------------------------------------------------------
+
+@app.get("/api/client-mode")
+def client_mode():
+    """这台机器是不是医院自助机（按 HMS_KIOSK_IPS 判断）。前端据此决定就诊人信息存不存本机。"""
+    try:
+        ip = ipaddress.ip_address(client_ip())
+        kiosk = any(ip in n for n in KIOSK_NETS)
+    except ValueError:
+        kiosk = False
+    return jsonify(kiosk=kiosk)
+
+
+@app.post("/api/patient-auth/logout")
+def patient_auth_logout():
+    """「清除本机记录」时调用：把请求头里带的患者凭证在服务端作废。"""
+    try:
+        raw = request.headers.get("X-Patient-Token") or ""
+        hashes = [_hash_token(t.strip()) for t in raw.split(",") if t.strip()][:10]
+        n = 0
+        if hashes:
+            n = query("DELETE FROM patient_sessions WHERE token_hash = ANY(%s)", [hashes]).rowcount
+        return jsonify(ok=True, revoked=n)
+    except Exception as err:                                  # noqa: BLE001
+        app.logger.error("[患者凭证注销] %s", err)
+        status, msg = db_error(err)
+        return jsonify(error=msg), status
+
 
 @app.post("/api/patient-auth/request")
 def patient_auth_request():
@@ -1349,7 +1409,18 @@ def update_quota(sid):
                 return jsonify(error="排班不存在"), 404
             return jsonify(error="号源总数不能小于已预约数（%d）"
                            % cur.rows[0]["booked_count"]), 409
-        return jsonify(map_schedule(upd.rows[0]))
+
+        # 加出来的号先按顺序补给正在排队的候补（每补一位就给他保留 2 小时），
+        # 补到没人排队或号又用完为止 —— 不然排队的人反而被后来直接挂号的人抢先
+        offered = 0
+        for _ in range(total):
+            r = query("SELECT fn_offer_next_waitlist(%s) AS w", [sid])
+            if not r.rows[0]["w"]:
+                break
+            offered += 1
+        out = map_schedule(upd.rows[0])
+        out["offeredWaitlist"] = offered
+        return jsonify(out)
     except Exception as err:                                  # noqa: BLE001
         app.logger.error("[调号源] %s", err)
         status, msg = db_error(err)
@@ -1504,19 +1575,20 @@ def resolve_patient(patient, email, trusted=False):
             code="REALNAME_MISMATCH"), 400)
 
     # 证件键 doc_key 是生成列，由证件类型 + 国籍 + 证件号算出；按它判断「是不是同一个人」
-    r = query(
-        """INSERT INTO patients (id, name, id_type, nationality, id_card, phone_cc, phone, email)
+    r = query_new_id(
+        """INSERT INTO patients (id, name, id_type, nationality, id_card, phone_cc, phone, email, sex)
            VALUES ('P' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
-                   %s, %s, %s, %s, %s, %s, %s)
+                   %s, %s, %s, %s, %s, %s, %s, %s)
            ON CONFLICT (doc_key) DO UPDATE
               SET name     = EXCLUDED.name,
+                  sex      = EXCLUDED.sex,
                   phone_cc = EXCLUDED.phone_cc,
                   phone    = EXCLUDED.phone,
                   email    = COALESCE(EXCLUDED.email, patients.email),
                   updated_at = NOW()
            RETURNING id""",
         [patient["name"], patient["idType"], patient["nationality"], patient["idCard"],
-         patient["phoneCc"], patient["phone"], email],
+         patient["phoneCc"], patient["phone"], email, patient["sex"]],
     )
     pid = r.rows[0]["id"]
     return pid, (None if trusted else issue_patient_token(pid)), None, None
@@ -1580,7 +1652,7 @@ def join_waitlist():
         if err:
             return err
 
-        ins = query(
+        ins = query_new_id(
             """INSERT INTO waitlist (id, schedule_id, patient_id, position, status)
                VALUES ('W' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
                        %s, %s, 0, 'waiting')
@@ -1701,7 +1773,7 @@ def confirm_waitlist(wl_id):
                 return jsonify(error="候补保留时间已过，号源已顺延给下一位"), 409
 
         appt_no = generate_appointment_no()
-        ins = query(
+        ins = query_new_id(
             """INSERT INTO appointments
                      (id, appointment_no, seq_no, schedule_id, doctor_id, patient_id, fee, status)
                SELECT 'A' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
@@ -1880,6 +1952,295 @@ def admin_notify_scan():
         return jsonify(error=msg), status
 
 
+# ---------------------------------------------------------------
+# 后台：病人资料
+#   列表与详情默认脱敏；admin / auditor 填理由可看明文，每次写 access_log（view_patient）。
+#   admin / desk 可改手机号与邮箱；姓名和证件是实名校验的依据，不在后台改。
+# ---------------------------------------------------------------
+_PATIENT_STATS_SQL = """
+    SELECT p.id, p.name, p.sex, p.id_type, p.nationality, p.id_card, p.doc_key,
+           p.phone_cc, p.phone, p.email, p.created_at, p.updated_at,
+           COUNT(a.id)                                         AS total,
+           COUNT(a.id) FILTER (WHERE a.status = 'booked')      AS booked,
+           COUNT(a.id) FILTER (WHERE a.status = 'completed')   AS completed,
+           COUNT(a.id) FILTER (WHERE a.status = 'cancelled')   AS cancelled,
+           COUNT(a.id) FILTER (WHERE a.status = 'no_show')     AS no_show,
+           MAX(s.work_date)                                    AS last_visit,
+           EXISTS (SELECT 1 FROM blacklist b
+                    WHERE b.id_card = p.doc_key
+                      AND (b.until IS NULL OR b.until > NOW())) AS blacklisted
+      FROM patients p
+      LEFT JOIN appointments a ON a.patient_id = p.id
+      LEFT JOIN schedules s    ON s.id = a.schedule_id
+"""
+
+
+def map_patient_admin(r, reveal=False):
+    return {
+        "id": r["id"],
+        "name": r["name"],
+        "sex": r["sex"] or "",
+        "idType": r["id_type"],
+        "nationality": r["nationality"] or "",
+        "idCard": r["id_card"] if reveal else mask_id_card_str(r["id_card"]),
+        "docKey": r["doc_key"],
+        "phoneCc": r["phone_cc"],
+        "phone": r["phone"] if reveal else mask_phone_str(r["phone"]),
+        "email": (r["email"] or "") if reveal else mask_email(r["email"] or ""),
+        "masked": not reveal,
+        "createdAt": as_iso(r["created_at"]),
+        "updatedAt": as_iso(r["updated_at"]),
+        "total": int(r["total"]),
+        "booked": int(r["booked"]),
+        "completed": int(r["completed"]),
+        "cancelled": int(r["cancelled"]),
+        "noShow": int(r["no_show"]),
+        "lastVisit": as_date_str(r["last_visit"]) if r["last_visit"] else None,
+        "blacklisted": bool(r["blacklisted"]),
+    }
+
+
+@app.get("/api/admin/patients")
+def admin_patients():
+    """病人列表：?keyword= 按姓名 / 手机号 / 证件号 / 档案号模糊查；?idType= 按证件类型筛。"""
+    try:
+        user, err = require_role("admin", "auditor", "desk")
+        if err:
+            return err
+
+        cond, params = [], []
+        kw = (request.args.get("keyword") or "").strip()
+        if kw:
+            like = "%" + kw + "%"
+            cond.append("(p.name ILIKE %s OR p.phone ILIKE %s OR p.id_card ILIKE %s OR p.id ILIKE %s)")
+            params.extend([like, like, like, like])
+        id_type = (request.args.get("idType") or "").strip().upper()
+        if id_type:
+            cond.append("p.id_type = %s")
+            params.append(id_type)
+        where = ("WHERE " + " AND ".join(cond)) if cond else ""
+
+        r = query(_PATIENT_STATS_SQL + where +
+                  " GROUP BY p.id ORDER BY p.created_at DESC, p.id DESC LIMIT 500", params)
+        return jsonify([map_patient_admin(x) for x in r.rows])
+    except Exception as err:                                  # noqa: BLE001
+        app.logger.error("[病人列表] %s", err)
+        status, msg = db_error(err)
+        return jsonify(error=msg), status
+
+
+@app.get("/api/admin/patients/<pid>")
+def admin_patient_detail(pid):
+    """病人详情 + 全部挂号记录。?reveal=1&reason=xxx 返回明文（同挂号记录的规则）。"""
+    try:
+        user, err = require_role("admin", "auditor", "desk")
+        if err:
+            return err
+
+        reveal = request.args.get("reveal") == "1"
+        reason = (request.args.get("reason") or "").strip()
+        if reveal and user["role"] not in ("admin", "auditor"):
+            return jsonify(error="当前账号无权查看完整患者信息", code="FORBIDDEN"), 403
+        if reveal and len(reason) < 2:
+            return jsonify(error="查看完整信息必须填写理由", code="REASON_REQUIRED"), 400
+
+        r = query(_PATIENT_STATS_SQL + " WHERE p.id = %s GROUP BY p.id", [pid])
+        if r.rowcount == 0:
+            return jsonify(error="病人档案不存在"), 404
+
+        appts = query(
+            "SELECT * FROM v_appointment_detail WHERE patient_id = %s "
+            "ORDER BY work_date DESC, created_at DESC", [pid])
+
+        if reveal:
+            write_access_log(user, "view_patient", "patient", pid, pid, reason)
+        out = map_patient_admin(r.rows[0], reveal)
+        out["appointments"] = [map_appointment(x, True, True) for x in appts.rows]
+        return jsonify(out)
+    except Exception as err:                                  # noqa: BLE001
+        app.logger.error("[病人详情] %s", err)
+        status, msg = db_error(err)
+        return jsonify(error=msg), status
+
+
+def _admin_patient_input(body, partial):
+    """校验后台提交的病人资料。partial=True（修改）时没传的字段保持不变。
+
+    返回 (ok, msg, fields)。fields 里只有要写入的字段。
+    """
+    f = {}
+    if not partial or "name" in body:
+        ok, msg, f["name"] = check_name(body.get("name"))
+        if not ok:
+            return False, msg, None
+    if not partial or body.get("idCard"):
+        ok, msg, doc = check_document(body.get("idType"), body.get("nationality"), body.get("idCard"))
+        if not ok:
+            return False, msg, None
+        f.update(id_type=doc["idType"], nationality=doc["nationality"],
+                 id_card=doc["idCard"], doc_key=doc["docKey"])
+        ok, msg, f["sex"] = resolve_sex(doc["idType"], doc["idCard"], body.get("sex"))
+        if not ok:
+            return False, msg, None
+    elif body.get("sex"):
+        # 没换证件只改性别：只有读不出性别的证件才允许（是否可改在 admin_patient_update 里再判断）
+        v = str(body.get("sex")).strip().upper()
+        if v not in ("M", "F"):
+            return False, "性别只能是男或女", None
+        f["sex"] = v
+    if not partial or body.get("phone"):
+        cc = str(body.get("phoneCc") or "86").strip().lstrip("+")
+        ok, msg, phone = check_phone(body.get("phone"), cc)
+        if not ok:
+            return False, msg, None
+        f.update(phone_cc=cc, phone=phone)
+    if body.get("clearEmail"):
+        f["email"] = None
+    elif not partial or body.get("email"):
+        ok, msg, email = check_email(body.get("email"))
+        if not ok:
+            return False, msg, None
+        if email or not partial:
+            f["email"] = email
+    return True, None, f
+
+
+@app.post("/api/admin/patients")
+def admin_patient_create():
+    """后台新建病人档案（窗口建档）。证件已有档案就报错，不覆盖。"""
+    try:
+        user, err = require_role("admin", "desk")
+        if err:
+            return err
+        ok, msg, f = _admin_patient_input(body_json(), partial=False)
+        if not ok:
+            return jsonify(error=msg), 400
+
+        exist = query("SELECT id, name FROM patients WHERE doc_key = %s", [f["doc_key"]])
+        if exist.rowcount:
+            return jsonify(error="该证件已有档案（%s，%s），请直接修改那份"
+                                 % (exist.rows[0]["id"], exist.rows[0]["name"])), 409
+
+        with transaction() as run:
+            r = run(
+                """INSERT INTO patients (id, name, id_type, nationality, id_card, phone_cc, phone, email, sex)
+                   VALUES ('P' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
+                           %s, %s, %s, %s, %s, %s, %s, %s)
+                   RETURNING id""",
+                [f["name"], f["id_type"], f["nationality"], f["id_card"],
+                 f["phone_cc"], f["phone"], f["email"], f["sex"]])
+            pid = r.rows[0]["id"]
+            # 窗口核验过证件，以后台录入的姓名为准登记到人口库
+            run("""INSERT INTO citizen_registry (id_card, name, source) VALUES (%s, %s, 'auto')
+                   ON CONFLICT (id_card) DO UPDATE SET name = EXCLUDED.name""",
+                [f["doc_key"], f["name"]])
+        write_access_log(user, "create_patient", "patient", pid, pid, "新建档案：" + f["name"])
+        return jsonify(ok=True, id=pid)
+    except Exception as err:                                  # noqa: BLE001
+        app.logger.error("[新建病人] %s", err)
+        status, msg = db_error(err)
+        return jsonify(error=msg), status
+
+
+@app.patch("/api/admin/patients/<pid>")
+def admin_patient_update(pid):
+    """修改病人资料：姓名、证件、手机号、邮箱，没传的保持不变。
+
+    改姓名 / 证件会同步人口库（citizen_registry）和黑名单，保证实名校验和拉黑仍然对得上这个人。
+    """
+    try:
+        user, err = require_role("admin", "desk")
+        if err:
+            return err
+        ok, msg, f = _admin_patient_input(body_json(), partial=True)
+        if not ok:
+            return jsonify(error=msg), 400
+        if not f:
+            return jsonify(error="没有要修改的内容"), 400
+
+        with transaction() as run:
+            old = run("SELECT name, doc_key, id_type, id_card FROM patients WHERE id = %s FOR UPDATE", [pid])
+            if old.rowcount == 0:
+                return jsonify(error="病人档案不存在"), 404
+            old = old.rows[0]
+            if "sex" in f and "id_card" not in f:
+                derived = doc_sex(old["id_type"], old["id_card"])
+                if derived and derived != f["sex"]:
+                    return jsonify(error="身份证 / 居住证的性别由证件号决定，不能单独修改"), 400
+                if derived:
+                    del f["sex"]
+                if not f:
+                    return jsonify(error="没有要修改的内容"), 400
+
+            cols = {k: v for k, v in f.items() if k != "doc_key"}   # doc_key 是生成列，跟着证件自动变
+            sets = ", ".join("%s = %%s" % k for k in cols) + ", updated_at = NOW()"
+            r = run("UPDATE patients SET " + sets + " WHERE id = %s RETURNING name, doc_key",
+                    list(cols.values()) + [pid]).rows[0]
+
+            if r["doc_key"] != old["doc_key"]:
+                run("DELETE FROM citizen_registry WHERE id_card = %s", [old["doc_key"]])
+                run("UPDATE blacklist SET id_card = %s WHERE id_card = %s", [r["doc_key"], old["doc_key"]])
+            run("""INSERT INTO citizen_registry (id_card, name, source) VALUES (%s, %s, 'auto')
+                   ON CONFLICT (id_card) DO UPDATE SET name = EXCLUDED.name""",
+                [r["doc_key"], r["name"]])
+
+        names = {"name": "姓名", "sex": "性别", "id_card": "证件", "phone": "手机号", "email": "邮箱"}
+        changed = "、".join(v for k, v in names.items() if k in f)
+        write_access_log(user, "edit_patient", "patient", pid, pid, "修改" + changed)
+        return jsonify(ok=True)
+    except Exception as err:                                  # noqa: BLE001
+        app.logger.error("[修改病人] %s", err)
+        if getattr(err, "sqlstate", None) == "23505":
+            return jsonify(error="该证件已属于另一位病人，请检查证件号"), 409
+        status, msg = db_error(err)
+        return jsonify(error=msg), status
+
+
+@app.delete("/api/admin/patients/<pid>")
+def admin_patient_delete(pid):
+    """删除病人档案（仅管理员，必须填理由）。
+
+    做法：
+      1. 今天及以后的有效挂号先退号 —— 走正常的退号触发器，号源归还、候补自动补位；
+      2. 再删掉此人的全部挂号（连带时间线、通知）、候补、患者凭证和档案本身；
+      3. 人口库登记一起删，证件以后可以重新登记；
+      4. 黑名单保留（按证件拉黑，换个档案不能绕过），访问日志保留（审计不删）。
+    """
+    try:
+        user, err = require_role("admin")
+        if err:
+            return err
+        reason = str(body_json().get("reason") or "").strip()
+        if len(reason) < 2:
+            return jsonify(error="删除病人档案必须填写理由"), 400
+
+        with transaction(operator=user["username"]) as run:
+            p = run("SELECT name, doc_key FROM patients WHERE id = %s FOR UPDATE", [pid])
+            if p.rowcount == 0:
+                return jsonify(error="病人档案不存在"), 404
+            p = p.rows[0]
+            cancelled = run(
+                """UPDATE appointments a
+                      SET status = 'cancelled', cancel_reason = 'admin',
+                          close_note = '病人档案被删除（' || %s || '）'
+                     FROM schedules s
+                    WHERE s.id = a.schedule_id AND a.patient_id = %s
+                      AND a.status = 'booked' AND s.work_date >= CURRENT_DATE""",
+                [user["username"], pid]).rowcount
+            appts = run("DELETE FROM appointments WHERE patient_id = %s", [pid]).rowcount
+            run("DELETE FROM waitlist WHERE patient_id = %s", [pid])
+            run("DELETE FROM patients WHERE id = %s", [pid])
+            run("DELETE FROM citizen_registry WHERE id_card = %s", [p["doc_key"]])
+
+        write_access_log(user, "delete_patient", "patient", pid, None,
+                         ("删除档案 %s：%s" % (p["name"], reason))[:120])
+        return jsonify(ok=True, cancelled=cancelled, appointments=appts)
+    except Exception as err:                                  # noqa: BLE001
+        app.logger.error("[删除病人] %s", err)
+        status, msg = db_error(err)
+        return jsonify(error=msg), status
+
+
 @app.get("/api/admin/blacklist")
 def admin_blacklist():
     try:
@@ -2011,7 +2372,7 @@ def proxy_booking():
         patient_id, _, _, _ = resolve_patient(patient, email, trusted=True)
 
         appt_no = generate_appointment_no()
-        ins = query(
+        ins = query_new_id(
             """INSERT INTO appointments
                      (id, appointment_no, seq_no, schedule_id, doctor_id, patient_id, fee, status)
                SELECT 'A' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
@@ -2078,10 +2439,55 @@ def unhandled(err):
 # 九、启动
 # ============================================================
 
+def set_password(username):
+    """python server/app.py --set-password admin
+
+    交互输入新密码（不回显、输两遍），写入散列并踢掉该账号所有已登录会话。
+    改 seed_data.py 再 --init 不会改已有账号的密码 —— 已有库只能走这里。
+    """
+    import getpass
+    from validators import hash_password
+
+    u = query("SELECT id FROM users WHERE username = %s", [username])
+    if u.rowcount == 0:
+        print("没有这个后台账号：%s" % username)
+        sys.exit(1)
+    pw = getpass.getpass("新密码（至少 8 位）：")
+    if len(pw) < 8:
+        print("密码太短，至少 8 位")
+        sys.exit(1)
+    if pw != getpass.getpass("再输一遍：") :
+        print("两次输入不一致")
+        sys.exit(1)
+    with transaction() as run:
+        run("UPDATE users SET password_hash = %s WHERE id = %s", [hash_password(pw), u.rows[0]["id"]])
+        n = run("DELETE FROM user_sessions WHERE user_id = %s", [u.rows[0]["id"]]).rowcount
+    if not verify_password(pw, query("SELECT password_hash FROM users WHERE id = %s",
+                                     [u.rows[0]["id"]]).rows[0]["password_hash"]):
+        print("写入后校验失败，请重试")
+        sys.exit(1)
+    print("已修改 %s 的密码，并注销了 %d 个已登录会话。" % (username, n))
+    pool.close_all()
+
+
+def warn_default_passwords():
+    """启动时检查后台账号是不是还在用 seed_data.py 里的初始密码。"""
+    try:
+        from seed_data import USERS
+        for u in USERS:
+            r = query("SELECT password_hash FROM users WHERE username = %s", [u["username"]])
+            if r.rowcount and verify_password(u["password"], r.rows[0]["password_hash"]):
+                print("  [!!] 后台账号 %s 仍在使用初始密码，部署前请修改：" % u["username"])
+                print("       python server/app.py --set-password %s\n" % u["username"])
+    except Exception:                                         # noqa: BLE001
+        pass
+
+
 def start_server():
     try:
         info = health_check()
         print("\n数据库连接正常：%s\n" % info["db"])
+        warn_default_passwords()
     except Exception as err:                                  # noqa: BLE001
         print("\n无法连接数据库：%s" % err)
         print("请检查 server/db.py 开头 DB_CONFIG 的地址、账号、密码，"
@@ -2146,6 +2552,10 @@ def main(argv):
             code = 1
         pool.close_all()
         sys.exit(code)
+
+    if "--set-password" in argv:
+        set_password(_arg_value(argv, "--set-password", "admin"))
+        return
 
     if "--worker" in argv:
         import reminder

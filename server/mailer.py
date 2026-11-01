@@ -146,14 +146,22 @@ def flush(limit=50):
     """
     stats = {"sent": 0, "skipped": 0, "failed": 0, "dry_run": not CONFIG.ready}
 
+    # ★ 原子领取：一条语句里挑出到点的行并把 scheduled_at 推后 10 分钟（租约）。
+    #   FOR UPDATE SKIP LOCKED 让并发的另一个 worker / 手动扫描直接跳过这些行，
+    #   领过的行在租约内也不会再被选中 —— 同一封信不会发两次。
+    #   进程中途崩了，10 分钟后租约到期，这些行会被重新领取（至多重发一次，不会丢）。
     rows = query(
-        """SELECT id, channel, recipient, subject, body, attempts
-             FROM notification_outbox
-            WHERE status = 'pending' AND scheduled_at <= NOW()
-            ORDER BY id
-            LIMIT %s""",
+        """UPDATE notification_outbox o
+               SET scheduled_at = NOW() + INTERVAL '10 minutes'
+             WHERE o.id IN (SELECT id FROM notification_outbox
+                             WHERE status = 'pending' AND scheduled_at <= NOW()
+                             ORDER BY id
+                             LIMIT %s
+                             FOR UPDATE SKIP LOCKED)
+         RETURNING o.id, o.channel, o.recipient, o.subject, o.body, o.attempts""",
         [limit],
     ).rows
+    rows.sort(key=lambda r: r["id"])
 
     for row in rows:
         if row["channel"] == "inapp":

@@ -274,9 +274,104 @@ function colon() { return LANG === 'zh' ? '：' : ': '; }
 function trRoom(room) {
   return room ? String(room).replace('诊室', t('room')) : t('tbd');
 }
+/* ---------- 就诊人信息存在哪 ----------
+ * 先判断这台机器是「医院自助机」还是「个人设备」：
+ *   · 自助机：工作人员在后台把本机登记为自助机（KIOSK_KEY），或服务端按 HMS_KIOSK_IPS 识别出来。
+ *     信息只放内存，从不写 localStorage；挂号成功 60 秒后、或空闲 90 秒自动清除。
+ *   · 个人设备：默认记住（下次挂号不用重填），本人可以取消勾选「在本机记住」——
+ *     网吧、图书馆这类系统认不出来的公用电脑就靠这个勾。 */
+const KIOSK_KEY = 'hosp_reg_kiosk';
+let kioskByIp = false;           // 服务端 /api/client-mode 的结果，启动时取一次
+function isKiosk() {
+  if (kioskByIp) return true;
+  try { return localStorage.getItem(KIOSK_KEY) === '1'; } catch (e) { return false; }
+}
+const REMEMBER_KEY = 'hosp_reg_remember';
+const PATIENT_KEYS = ['hosp_reg_patient', 'hosp_reg_patients', 'hosp_reg_ptokens'];
+const memStore = {
+  m: {},
+  getItem: function (k) { return Object.prototype.hasOwnProperty.call(this.m, k) ? this.m[k] : null; },
+  setItem: function (k, v) { this.m[k] = String(v); },
+  removeItem: function (k) { delete this.m[k]; },
+};
+function rememberOn() {
+  if (isKiosk()) return false;
+  try { return localStorage.getItem(REMEMBER_KEY) !== '0'; } catch (e) { return false; }   // 个人设备默认记住
+}
+function pstore() { return rememberOn() ? localStorage : memStore; }
+
+/* 勾选 / 取消「在本机记住」：把当前就诊人信息在内存和 localStorage 之间搬过去 */
+function setRemember(on) {
+  const from = pstore();
+  const data = {};
+  PATIENT_KEYS.forEach(function (k) { data[k] = from.getItem(k); });
+  try {
+    localStorage.setItem(REMEMBER_KEY, on ? '1' : '0');
+  } catch (e) { /* 存不了就只能不记住 */ }
+  PATIENT_KEYS.forEach(function (k) {
+    try { localStorage.removeItem(k); } catch (e) {}
+    memStore.removeItem(k);
+    if (data[k] !== null) pstore().setItem(k, data[k]);
+  });
+}
+function rememberHtml() {
+  if (isKiosk()) return '<p class="kiosk-note">🏥 ' + escapeHtml(t('kiosk_note')) + '</p>';
+  return '<p class="remember-row"><label><input type="checkbox" id="rememberMe"' + (rememberOn() ? ' checked' : '')
+    + ' onchange="setRemember(this.checked)" /> ' + escapeHtml(t('remember_me')) + '</label>'
+    + '<span class="tip">' + escapeHtml(t('remember_tip')) + '</span></p>';
+}
+
+/* 不记住时：清掉内存里的就诊人信息，回到首页（空闲超时、点「完成」都走这里） */
+function forgetPatient() {
+  if (rememberOn()) return;
+  PATIENT_KEYS.forEach(function (k) { memStore.removeItem(k); });
+  bookingState = { step: 1, deptId: '', doctorId: '', scheduleId: '', date: '', period: '', patient: null, apt: null };
+  if (currentPage !== 'admin' && currentPage !== 'login') goHome();
+}
+
+/* 空闲自动清除（只在「不记住」且内存里确实有就诊人信息时才动作）：自助机 90 秒，其他 3 分钟 */
+const IDLE_MS = 3 * 60 * 1000;
+const KIOSK_IDLE_MS = 90 * 1000;
+let idleTimer = null;
+function bumpIdle() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(function () {
+    const has = PATIENT_KEYS.some(function (k) { return memStore.getItem(k) !== null; })
+      || (bookingState && bookingState.step > 1);
+    if (!rememberOn() && has) forgetPatient();
+  }, isKiosk() ? KIOSK_IDLE_MS : IDLE_MS);
+}
+
+/* 后台：把本机登记为医院自助机 / 取消（仅管理员）。登记信息单独存，不随「清除就诊人」一起清掉 */
+function renderKioskSetting() {
+  const box = document.getElementById('kioskSetting');
+  if (!box) return;
+  if (myRole() !== 'admin') { box.innerHTML = ''; return; }
+  const enrolled = (function () { try { return localStorage.getItem(KIOSK_KEY) === '1'; } catch (e) { return false; } })();
+  let h = '本机模式：<b>' + (isKiosk() ? '医院自助机' : '个人设备') + '</b>';
+  if (kioskByIp) h += '（按 IP 识别）';
+  h += enrolled
+    ? ' <button class="btn small" onclick="setKiosk(false)">取消自助机登记</button>'
+    : ' <button class="btn small" onclick="setKiosk(true)">将本机设为医院自助机</button>';
+  h += '<br><span class="tip">自助机上不保存任何就诊人信息，挂号成功 60 秒后或空闲 90 秒自动清除。请在每台自助机上用管理员账号登记一次。</span>';
+  box.innerHTML = h;
+}
+function setKiosk(on) {
+  if (on && !confirm('将这台电脑设为医院自助机？\n\n之后在这台电脑上挂号，病人信息都不会保存，办完自动清除。')) return;
+  try {
+    if (on) localStorage.setItem(KIOSK_KEY, '1');
+    else localStorage.removeItem(KIOSK_KEY);
+  } catch (e) { alert('浏览器禁止了本地存储，无法登记'); return; }
+  if (on) PATIENT_KEYS.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+  renderKioskSetting();
+}
+['pointerdown', 'keydown', 'scroll', 'touchstart'].forEach(function (ev) {
+  window.addEventListener(ev, bumpIdle, { passive: true });
+});
+
 function getSavedPatients() {
   try {
-    var raw = localStorage.getItem('hosp_reg_patients');
+    var raw = pstore().getItem('hosp_reg_patients');
     if (raw) return JSON.parse(raw);
   } catch (e) {}
   return [];
@@ -288,7 +383,7 @@ function savePatientToHistory(p) {
     for (var i = 0; i < list.length; i++) { if (sessKey(list[i]) !== sessKey(p)) cleaned.push(list[i]); }
     cleaned.unshift(patientRecord(p));
     if (cleaned.length > 5) cleaned.length = 5;
-    localStorage.setItem('hosp_reg_patients', JSON.stringify(cleaned));
+    pstore().setItem('hosp_reg_patients', JSON.stringify(cleaned));
   } catch (e) {}
 }
 
@@ -350,7 +445,7 @@ function escapeHtml(s) {
 function loadSession() {
   let raw = null;
   try {
-    raw = localStorage.getItem(SESSION_KEY);
+    raw = pstore().getItem(SESSION_KEY);
   } catch (e) {
     raw = null;
   }
@@ -376,7 +471,7 @@ function sessKey(s) {
 function patientRecord(p) {
   return {
     name: p.name || '', idType: p.idType || 'CN_ID', nationality: p.nationality || '',
-    idCard: p.idCard || '', docKey: sessKey(p), phoneCc: p.phoneCc || '86', phone: p.phone || '', email: p.email || '',
+    idCard: p.idCard || '', docKey: sessKey(p), phoneCc: p.phoneCc || '86', phone: p.phone || '', email: p.email || '', sex: p.sex || '',
   };
 }
 
@@ -389,7 +484,7 @@ function saveSession(s) {
   }
   next.docKey = s.docKey || (s.idCard ? docKeyOf(next.idType, next.nationality, next.idCard) : next.docKey);
   try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+    pstore().setItem(SESSION_KEY, JSON.stringify(next));
   } catch (e) {
     /* 存不进去也不影响挂号 */
   }
@@ -467,7 +562,7 @@ const PTOKEN_KEY = 'hosp_reg_ptokens';
 
 function loadPatientTokens() {
   try {
-    return JSON.parse(localStorage.getItem(PTOKEN_KEY) || '{}') || {};
+    return JSON.parse(pstore().getItem(PTOKEN_KEY) || '{}') || {};
   } catch (e) {
     return {};
   }
@@ -477,7 +572,7 @@ function savePatientToken(idCard, t) {
   const all = loadPatientTokens();
   all[String(idCard).trim().toUpperCase()] = t;
   try {
-    localStorage.setItem(PTOKEN_KEY, JSON.stringify(all));
+    pstore().setItem(PTOKEN_KEY, JSON.stringify(all));
   } catch (e) {
     /* 存不进去就只是下次还要验证 */
   }
@@ -698,6 +793,30 @@ async function apiNotifyScan() {
   return request('POST', '/admin/notify/scan');
 }
 
+async function apiAdminPatients(keyword, idType) {
+  return request('GET', '/admin/patients?keyword=' + encodeURIComponent(keyword || '')
+    + '&idType=' + encodeURIComponent(idType || ''));
+}
+
+/* 病人详情；reveal=1 时服务端写一条 access_log（view_patient） */
+async function apiAdminPatient(id, reveal, reason) {
+  let url = '/admin/patients/' + encodeURIComponent(id);
+  if (reveal) url += '?reveal=1&reason=' + encodeURIComponent(reason || '');
+  return request('GET', url);
+}
+
+async function apiAdminPatientUpdate(id, body) {
+  return request('PATCH', '/admin/patients/' + encodeURIComponent(id), body);
+}
+
+async function apiAdminPatientCreate(body) {
+  return request('POST', '/admin/patients', body);
+}
+
+async function apiAdminPatientDelete(id, reason) {
+  return request('DELETE', '/admin/patients/' + encodeURIComponent(id), { reason: reason });
+}
+
 async function apiBlacklist() {
   return request('GET', '/admin/blacklist');
 }
@@ -745,6 +864,13 @@ async function apiAppointmentLogs(id) {
 const ID_TYPES = ['CN_ID', 'PASSPORT', 'FRP', 'HK_MO', 'TW', 'HMT_RES'];
 const ID_WEIGHTS = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
 
+/* 身份证号里的出生日期（第 7–14 位）是否真实存在且不晚于今天 */
+function birthOk(v) {
+  const y = +v.slice(6, 10), m = +v.slice(10, 12), d = +v.slice(12, 14);
+  const dt = new Date(y, m - 1, d);
+  return y >= 1900 && dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d && dt <= new Date();
+}
+
 function gb11643Ok(v) {
   if (!/^\d{17}[\dX]$/.test(v)) return false;
   let sum = 0;
@@ -759,14 +885,39 @@ function docKeyOf(type, nat, no) {
 }
 
 function needNationality(type) { return type === 'PASSPORT' || type === 'FRP'; }
+/* 身份证、港澳台居住证的第 17 位就是性别（奇数男、偶数女），不用再问；其他证件要患者自己选 */
+function docHasSex(type) { return type === 'CN_ID' || type === 'HMT_RES'; }
+function sexOfDoc(type, no) {
+  return docHasSex(type) && /^\d{17}[\dX]$/.test(no) ? (Number(no[16]) % 2 === 1 ? 'M' : 'F') : '';
+}
+function sexFieldHtml(prefix, type, val) {
+  return '<p id="' + prefix + 'SexRow"' + (docHasSex(type) ? ' style="display:none"' : '') + '><label for="' + prefix + 'Sex">' + t('sex') + '</label>'
+    + '<select id="' + prefix + 'Sex"><option value="">' + escapeHtml(t('sex_choose')) + '</option>'
+    + ['M', 'F'].map(function (k) { return '<option value="' + k + '"' + (val === k ? ' selected' : '') + '>' + escapeHtml(t('sex_' + k)) + '</option>'; }).join('')
+    + '</select></p>';
+}
+function sexLabel(sx) { return sx ? t('sex_' + sx) : '—'; }
 
 /* 国籍下拉：按当前语言的国家名排序 */
+/* 搜索关键字：当前语言名之外，再带上英文名、中文名、两位代码和区号 —— 用任何一种都能搜到 */
+let enNames = null, zhNames = null;
+function countryKeywords(code, cc) {
+  try {
+    enNames = enNames || new Intl.DisplayNames(['en'], { type: 'region' });
+    zhNames = zhNames || new Intl.DisplayNames(['zh-CN'], { type: 'region' });
+    return [code, enNames.of(code), zhNames.of(code), '+' + cc, cc].join(' ');
+  } catch (e) {
+    return code + ' +' + cc;
+  }
+}
+
 function nationalityOptions(sel) {
-  const list = COUNTRIES.map(function (c) { return [c[0], countryName(c[0])]; });
+  const list = COUNTRIES.map(function (c) { return [c[0], countryName(c[0]), c[1]]; });
   list.sort(function (a, b) { return a[1].localeCompare(b[1], langTag()); });
   let h = '<option value="">' + escapeHtml(t('choose')) + '</option>';
   list.forEach(function (c) {
-    h += '<option value="' + c[0] + '"' + (c[0] === sel ? ' selected' : '') + '>' + escapeHtml(c[1]) + '</option>';
+    h += '<option value="' + c[0] + '" data-kw="' + escapeHtml(countryKeywords(c[0], c[2])) + '"'
+       + (c[0] === sel ? ' selected' : '') + '>' + escapeHtml(c[1]) + '</option>';
   });
   return h;
 }
@@ -775,13 +926,16 @@ function nationalityOptions(sel) {
 function phoneCcOptions(sel) {
   const byCc = {};
   const order = [];
+  const kw = {};
   COUNTRIES.forEach(function (c) {
-    if (!byCc[c[1]]) { byCc[c[1]] = []; order.push(c[1]); }
+    if (!byCc[c[1]]) { byCc[c[1]] = []; kw[c[1]] = []; order.push(c[1]); }
     byCc[c[1]].push(countryName(c[0]));
+    kw[c[1]].push(countryKeywords(c[0], c[1]));
   });
   let h = '';
   order.forEach(function (cc) {
-    h += '<option value="' + cc + '"' + (cc === (sel || '86') ? ' selected' : '') + '>+' + cc + ' ' + escapeHtml(byCc[cc].join(' / ')) + '</option>';
+    h += '<option value="' + cc + '" data-kw="' + escapeHtml(kw[cc].join(' ')) + '"'
+       + (cc === (sel || '86') ? ' selected' : '') + '>+' + cc + ' ' + escapeHtml(byCc[cc].join(' / ')) + '</option>';
   });
   return h;
 }
@@ -796,10 +950,10 @@ function docFieldsHtml(prefix, v, withPhone) {
   });
   h += '</select></p>';
   h += '<p id="' + prefix + 'NatRow"' + (needNationality(type) ? '' : ' style="display:none"') + '><label for="' + prefix + 'Nat">' + t('nationality') + '</label>'
-     + '<select id="' + prefix + 'Nat">' + nationalityOptions(v.nationality || '') + '</select></p>';
+     + '<select class="searchable" id="' + prefix + 'Nat">' + nationalityOptions(v.nationality || '') + '</select></p>';
   h += '<p><label for="' + prefix + 'IdCard">' + t('id_no') + '</label><input id="' + prefix + 'IdCard" type="text" maxlength="20" autocapitalize="characters" autocomplete="off"'
      + ' placeholder="' + escapeHtml(t('ph_' + type)) + '" value="' + escapeHtml(v.idCard || '') + '" /></p>';
-  if (withPhone) h += phoneFieldHtml(prefix, v);
+  if (withPhone) h += sexFieldHtml(prefix, type, v.sex || '') + phoneFieldHtml(prefix, v);
   return h;
 }
 
@@ -807,7 +961,7 @@ function phoneFieldHtml(prefix, v) {
   v = v || {};
   const cc = v.phoneCc || '86';
   return '<p><label for="' + prefix + 'Phone">' + t('phone') + '</label><span class="phone-row">'
-       + '<select id="' + prefix + 'PhoneCc" aria-label="' + escapeHtml(t('phone_cc')) + '" onchange="onPhoneCcChange(\'' + prefix + '\')">' + phoneCcOptions(cc) + '</select>'
+       + '<select class="searchable" id="' + prefix + 'PhoneCc" aria-label="' + escapeHtml(t('phone_cc')) + '" onchange="onPhoneCcChange(\'' + prefix + '\')">' + phoneCcOptions(cc) + '</select>'
        + '<input id="' + prefix + 'Phone" type="tel" maxlength="11" placeholder="' + escapeHtml(t(cc === '86' ? 'phone_ph_cn' : 'phone_ph_intl')) + '" value="' + escapeHtml(v.phone || '') + '" />'
        + '</span></p>';
 }
@@ -816,6 +970,8 @@ function onDocTypeChange(prefix) {
   const type = document.getElementById(prefix + 'IdType').value;
   document.getElementById(prefix + 'NatRow').style.display = needNationality(type) ? '' : 'none';
   document.getElementById(prefix + 'IdCard').placeholder = t('ph_' + type);
+  const sexRow = document.getElementById(prefix + 'SexRow');
+  if (sexRow) sexRow.style.display = docHasSex(type) ? 'none' : '';
 }
 
 function onPhoneCcChange(prefix) {
@@ -829,7 +985,7 @@ function readDoc(prefix) {
   const no = document.getElementById(prefix + 'IdCard').value.replace(/[\s-]/g, '').toUpperCase();
   let nat = needNationality(type) ? document.getElementById(prefix + 'Nat').value : '';
   let ok;
-  if (type === 'CN_ID') ok = gb11643Ok(no) && !/^(81|82|83|9)/.test(no);
+  if (type === 'CN_ID') ok = gb11643Ok(no) && birthOk(no) && !/^(81|82|83|9)/.test(no);
   else if (type === 'HMT_RES') ok = gb11643Ok(no) && /^8[123]0000/.test(no);
   else if (type === 'FRP') ok = (gb11643Ok(no) && no[0] === '9') || /^[A-Z]{3}\d{12}$/.test(no);
   else if (type === 'HK_MO') ok = /^[HM]\d{8}(\d{2})?$/.test(no);
@@ -837,7 +993,14 @@ function readDoc(prefix) {
   else ok = /^[A-Z0-9]{5,14}$/.test(no);
   if (!no || !ok) return { ok: false, msg: t('v_doc_' + type) };
   if (needNationality(type) && !nat) return { ok: false, msg: t('v_nat') };
-  return { ok: true, idType: type, nationality: nat, idCard: no, docKey: docKeyOf(type, nat, no) };
+  /* 性别：证件能读出就用证件的；读不出且表单里有性别一栏，就必须选 */
+  let sex = sexOfDoc(type, no);
+  const sexSel = document.getElementById(prefix + 'Sex');
+  if (!sex && sexSel) {
+    sex = sexSel.value;
+    if (!sex) return { ok: false, msg: t('v_sex') };
+  }
+  return { ok: true, idType: type, nationality: nat, idCard: no, docKey: docKeyOf(type, nat, no), sex: sex };
 }
 
 function readPhone(prefix) {
@@ -1018,6 +1181,7 @@ function renderProfile() {
     + '<div class="actions"><button class="btn primary" onclick="saveProfile()">' + t('save') + '</button>'
     + '<button class="btn" onclick="clearLocalPatient()">' + t('switch_patient') + '</button>'
     + '<span class="tip" id="profileSaveTip"></span></div>'
+    + rememberHtml()
     + '</div></div>';
   if (sessKey(sess)) loadProfile();
   else document.getElementById('profileTip').textContent = t('prof_need');
@@ -1072,17 +1236,23 @@ async function saveProfile() {
  * 角色显示出来是有用的 —— 窗口人员看到「窗口」就知道自己看不到审计日志，
  * 不用去点一个必然 403 的按钮。 */
 function showLoginInfo() {
-  /* 顶栏只放「退出登录」按钮；当前账号与角色显示在管理后台页内，不占顶栏位置 */
+  /* 顶栏只标一句「管理员已登录」（点它进后台）；退出登录放在后台页签里，
+   * 患者端页面不出现退出按钮，免得在公用电脑上被误点或被患者看到账号操作 */
   var el = document.getElementById('adminWho');
-  var logoutBtn = document.getElementById('logoutBtn');
+  var badge = document.getElementById('staffBadge');
+  var bar = document.getElementById('staffBar');
   if (!currentUser) {
     if (el) el.textContent = '';
-    if (logoutBtn) logoutBtn.style.display = 'none';
+    if (badge) badge.style.display = 'none';
+    if (bar) bar.className = 'staff-bar';
+    renderKioskSetting();
     return;
   }
   var roleName = ROLE_LABEL[currentUser.role] || currentUser.role || '管理员';
   if (el) el.textContent = '当前账号：' + currentUser.username + ' · ' + roleName;
-  if (logoutBtn) logoutBtn.style.display = '';
+  renderKioskSetting();
+  if (badge) { badge.textContent = '✅ ' + roleName + '已登录'; badge.title = '点击进入后台管理'; badge.style.display = ''; }
+  if (bar) { bar.textContent = '✅ ' + roleName + '已登录 · 进入后台管理 ›'; bar.className = 'staff-bar on'; }
 }
 
 /* 三个角色的中文名。和后端 users.role 的取值一一对应。 */
@@ -1116,13 +1286,13 @@ function canWrite() {
 
 /* focusSearch：从首页「找医生」进来时把光标放进搜索框 */
 function startBooking(focusSearch) {
-  bookingState = { step: 1, deptId: '', doctorId: '', scheduleId: '', date: '', period: '', patient: loadSession(), apt: null };
+  bookingState = { step: 1, deptId: '', doctorId: '', scheduleId: '', date: '', period: '', patient: isKiosk() ? null : loadSession(), apt: null };
   showPage('booking');
   renderBookingStep();
   if (focusSearch === true) { var box = document.getElementById('deptSearch'); if (box) box.focus(); }
 }
 function startBookingWithDept(deptId, doctorId) {
-  bookingState = { step: 2, deptId: deptId, doctorId: doctorId, scheduleId: '', date: '', period: '', patient: loadSession(), apt: null };
+  bookingState = { step: 2, deptId: deptId, doctorId: doctorId, scheduleId: '', date: '', period: '', patient: isKiosk() ? null : loadSession(), apt: null };
   showPage('booking');
   renderBookingStep();
 }
@@ -1241,7 +1411,7 @@ function renderDeptCards(items, others, q) {
     if (!d) continue;
     var docs = doctorsOf(d.id);
     html += `<div class="card" onclick="pickDept('${d.id}')">`;
-    html += '<div class="card-title">' + deptIcon(d.id) + ' ' + escapeHtml(trDeptName(d)) + '</div>';
+    html += '<div class="card-title">' + deptIcon(d.id) + ' ' + escapeHtml(trDeptName(d)) + sexLimitBadge(d.id) + '</div>';
     if (items[i].hits && items[i].hits.length) html += '<div class="tip">' + t('match') + ': ' + escapeHtml(items[i].hits.join('、')) + '</div>';
     html += '<div class="tip">' + escapeHtml(trDeptDesc(d)) + '</div>';
     html += '<div class="tip">📍 ' + escapeHtml(d.location ? trLocation(d.location) : t('loc_tbd')) + ' · ' + t('n_doctors', { n: docs.length }) + '</div>';
@@ -1249,6 +1419,14 @@ function renderDeptCards(items, others, q) {
   }
   if (!items.length && !others.length && !docs.length) html = '<p class="tip search-hint">' + t('no_match') + '</p>';
   list.innerHTML = html;
+}
+function deptSexLimit(deptId) {
+  for (var i = 0; i < departments.length; i++) { if (departments[i].id === deptId) return departments[i].sexLimit || ''; }
+  return '';
+}
+function sexLimitBadge(deptId) {
+  var lim = deptSexLimit(deptId);
+  return lim ? ' <span class="badge orange">' + escapeHtml(t(lim === 'F' ? 'only_f' : 'only_m')) + '</span>' : '';
 }
 function pickDept(deptId) {
   bookingState.step = 2;
@@ -1418,6 +1596,7 @@ function renderStep3(body) {
   html += '<p><label for="bkEmail">' + t('email') + '</label><input id="bkEmail" type="text" maxlength="120" placeholder="' + escapeHtml(t('email_ph')) + '" value="' + escapeHtml(pt.email || '') + '" /></p>';
   html += '</div>';
   /* 错误直接写在按钮上方：alert 被浏览器屏蔽时，用户会以为「点了没反应」 */
+  html += rememberHtml();
   html += '<p class="form-error" id="bkError" role="alert"></p>';
   html += '<div class="actions">';
   html += '<button class="btn primary" id="bkSubmit" onclick="submitBooking()">' + t('submit_booking') + '</button>';
@@ -1449,6 +1628,8 @@ async function submitBooking(captcha) {
   if (!nm.ok) return fail(nm.msg);
   var doc = readDoc('bk');
   if (!doc.ok) return fail(doc.msg);
+  var lim = deptSexLimit(bookingState.deptId);
+  if (lim && doc.sex && doc.sex !== lim) return fail(t(lim === 'F' ? 'e_only_f' : 'e_only_m'));
   var ph = readPhone('bk');
   if (!ph.ok) return fail(ph.msg);
   var em = readEmail('bkEmail');
@@ -1457,7 +1638,7 @@ async function submitBooking(captcha) {
   var btn = document.getElementById('bkSubmit');
   if (btn) { btn.disabled = true; btn.textContent = t('booking_ing'); }
   var patient = {
-    name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard, docKey: doc.docKey,
+    name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard, docKey: doc.docKey, sex: doc.sex,
     phoneCc: ph.phoneCc, phone: ph.phone, email: em.email,
   };
   try {
@@ -1487,6 +1668,20 @@ async function submitBooking(captcha) {
 }
 
 /* ---------- Step 4 成功页 ---------- */
+let kioskCountdownTimer = null;
+function startKioskCountdown() {
+  clearInterval(kioskCountdownTimer);
+  var n = 60;
+  var tick = function () {
+    var el = document.getElementById('kioskCountdown');
+    if (!el || bookingState.step !== 4) { clearInterval(kioskCountdownTimer); return; }   // 已经离开成功页
+    if (n <= 0) { clearInterval(kioskCountdownTimer); forgetPatient(); return; }
+    el.textContent = '🏥 ' + t('kiosk_countdown', { n: n });
+    n--;
+  };
+  tick();
+  kioskCountdownTimer = setInterval(tick, 1000);
+}
 function renderStep4(body) {
   var apt = bookingState.apt || {};
   var dept = null, doc = null;
@@ -1508,10 +1703,13 @@ function renderStep4(body) {
   html += '<button class="btn" onclick="viewRoute()">' + t('route') + '</button>';
   html += '<button class="btn" onclick="cancelJustBooked()">' + t('cancel_appt') + '</button>';
   html += '<button class="btn primary" onclick="startBooking()">' + t('continue_booking') + '</button>';
+  if (!rememberOn()) html += '<button class="btn" onclick="forgetPatient()">' + t('done_clear') + '</button>';
+  if (isKiosk()) html += '<p class="kiosk-note" id="kioskCountdown"></p>';
   html += '</div>';
   html += '<p class="tip">' + t('bring_docs') + '</p>';
   html += '</div>';
   body.innerHTML = html;
+  if (isKiosk()) startKioskCountdown();
 }
 function cancelJustBooked() {
   var apt = bookingState.apt;
@@ -1626,8 +1824,8 @@ async function renderReminders() {
     for (var i = 0; i < arr.length; i++) {
       var n = arr[i];
       html += '<div class="appt-card">';
-      html += '<div class="header"><span class="title">' + escapeHtml(t('reminder')) + '</span><span class="tip">' + fmtTime(n.scheduledAt) + '</span></div>';
-      html += '<div class="meta">' + escapeHtml(n.message || '') + '</div>';
+      html += '<div class="header"><span class="title">' + escapeHtml(n.subject || t('reminder')) + '</span><span class="tip">' + fmtTime(n.at) + '</span></div>';
+      html += '<div class="meta">' + escapeHtml(n.body || '') + '</div>';
       html += '</div>';
     }
     list.innerHTML = html;
@@ -1638,10 +1836,15 @@ async function renderReminders() {
 }
 
 /* ---------- 我的资料补充 ---------- */
-function clearLocalPatient() {
+async function clearLocalPatient() {
   if (!confirm(t('confirm_clear'))) return;
-  try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
-  try { localStorage.removeItem('hosp_reg_patients'); } catch (e) {}
+  /* 先让服务端把本机持有的患者凭证作废（请求头会自动带上它们），再清本地。
+   * 以前只清了就诊人信息，凭证还留在 localStorage 里，公用电脑上下一个人仍能用上一位的身份。 */
+  try { await request('POST', '/patient-auth/logout'); } catch (e) { /* 断网也照样清本地 */ }
+  PATIENT_KEYS.forEach(function (k) {
+    try { localStorage.removeItem(k); } catch (e) {}
+    memStore.removeItem(k);
+  });
   bookingState.patient = null;
   renderProfile();
   var pt = document.getElementById('profileTip');
@@ -1656,7 +1859,7 @@ function clearLocalPatient() {
  * ============================================================ */
 
 /* ---------- 切子页签 ---------- */
-const ADMIN_TABS = ['records', 'schedules', 'waitlist', 'proxy', 'access', 'outbox', 'blacklist'];
+const ADMIN_TABS = ['records', 'patients', 'schedules', 'waitlist', 'proxy', 'access', 'outbox', 'blacklist'];
 
 /* 管理后台页签排版：每行放几个按钮，让各行数量相同。
  * 做法：先量出每个按钮「不挤」时要多宽，再从「一行放下全部」开始往下试，
@@ -1749,6 +1952,7 @@ function showAdminTab(tab) {
 
   const tips = {
     records: '挂号记录（含已取消、已停诊）· 患者隐私默认脱敏',
+    patients: '病人资料 · 档案与历次挂号，隐私默认脱敏',
     schedules: '排班号源 · 一天两条（上午 / 下午）',
     waitlist: '候补队列 · 退号后自动补位给队首',
     proxy: '窗口代约 · 电话或到院办理的号由工作人员录入',
@@ -1759,6 +1963,7 @@ function showAdminTab(tab) {
   document.getElementById('adminTip').textContent = tips[tab] || '';
 
   if (tab === 'records') renderRecords();
+  if (tab === 'patients') renderPatients();
   if (tab === 'schedules') renderSchedules();
   if (tab === 'waitlist') renderAdminWaitlist();
   if (tab === 'proxy') { initProxyForm(); document.getElementById('pxDoc').innerHTML = docFieldsHtml('px', {}, true); }
@@ -1873,6 +2078,8 @@ function clearFilters() {
   adminKeyword = '';
   document.getElementById('fDept').value = '';
   document.getElementById('fDate').value = '';
+  syncSearchable('fDept');
+  syncSearchable('fDate');
   document.getElementById('fKeyword').value = '';
   renderRecords();
 }
@@ -2068,6 +2275,135 @@ async function toggleSchedule(scheduleId) {
  * 卡片里每一项前面要有字段名，所以把表头文字抄到每个单元格的 data-label 上。
  * 用 MutationObserver 监听所有 tbody：各页面照旧用 innerHTML 填数据，
  * 填完自动补标签，渲染代码一行都不用改，以后新加表格也自动生效。 */
+/* ============================================================
+ * 可搜索下拉框：选项多的 <select class="searchable"> 自动换成「输入框 + 过滤列表」
+ *
+ * 原来的 <select> 还在（隐藏起来），值仍然存在它身上 —— readDoc、onchange 这些代码一行都不用改。
+ * 点开或开始输入就弹出列表，输入的文字匹配选项文字和 data-kw 里的关键字（国家的英文名、代码、区号）；
+ * ↑↓ 选择、回车确定、Esc 关闭。页面上新画出来的下拉框由 MutationObserver 自动接管。
+ * ============================================================ */
+function enhanceSelect(sel) {
+  if (sel.dataset.enhanced) return;
+  sel.dataset.enhanced = '1';
+  const wrap = document.createElement('span');
+  wrap.className = 'ss-wrap';
+  sel.parentNode.insertBefore(wrap, sel);
+  wrap.appendChild(sel);
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'ss-input';
+  input.autocomplete = 'off';
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-expanded', 'false');
+  if (sel.id) {
+    input.id = sel.id + '_ss';
+    document.querySelectorAll('label[for="' + sel.id + '"]').forEach(function (l) { l.htmlFor = input.id; });
+  }
+  if (sel.getAttribute('aria-label')) input.setAttribute('aria-label', sel.getAttribute('aria-label'));
+  const list = document.createElement('div');
+  list.className = 'ss-list';
+  list.setAttribute('role', 'listbox');
+  wrap.appendChild(input);
+  wrap.appendChild(list);
+
+  let items = [], active = -1;
+  function sync() {
+    const o = sel.options[sel.selectedIndex];
+    input.value = o && o.value ? o.text : '';
+    input.placeholder = (o && !o.value) ? o.text : t('ss_ph');
+  }
+  function render(q) {
+    q = (q || '').trim().toLowerCase();
+    /* 排序：代码 / 区号完全一致 > 名称开头就对上 > 某个关键字开头对上 > 中间包含（搜 ger 时德国排在阿尔及利亚前面） */
+    const score = function (o) {
+      if (!q) return 0;
+      const words = (o.text + ' ' + (o.dataset.kw || '')).toLowerCase().split(/[\s/]+/);
+      if (words.indexOf(q) >= 0) return 1;
+      if (o.text.toLowerCase().indexOf(q) === 0) return 2;
+      if (words.some(function (w) { return w.indexOf(q) === 0; })) return 3;
+      return (o.text + ' ' + (o.dataset.kw || '')).toLowerCase().indexOf(q) >= 0 ? 4 : 0;
+    };
+    items = [].filter.call(sel.options, function (o) { return o.value && (!q || score(o) > 0); });
+    if (q) items.sort(function (a, b) { return score(a) - score(b); });
+    list.innerHTML = items.length
+      ? items.map(function (o, i) {
+          return '<div class="ss-opt' + (o.value === sel.value ? ' sel' : '') + '" role="option" data-i="' + i + '">' + escapeHtml(o.text) + '</div>';
+        }).join('')
+      : '<div class="ss-empty">' + escapeHtml(t('ss_none')) + '</div>';
+    active = -1;
+  }
+  function open() {
+    /* 同一时间只开一个列表 */
+    document.querySelectorAll('.ss-wrap.open').forEach(function (w) { if (w !== wrap && w._ssClose) w._ssClose(); });
+    render('');
+    wrap.classList.add('open');
+    input.setAttribute('aria-expanded', 'true');
+    input.value = '';
+    input.placeholder = t('ss_ph');
+    const cur = list.querySelector('.ss-opt.sel');
+    if (cur) cur.scrollIntoView({ block: 'nearest' });
+  }
+  function close() {
+    wrap.classList.remove('open');
+    input.setAttribute('aria-expanded', 'false');
+    sync();
+  }
+  function highlight(i) {
+    const opts = list.querySelectorAll('.ss-opt');
+    if (!opts.length) return;
+    active = (i + opts.length) % opts.length;
+    opts.forEach(function (el, k) { el.classList.toggle('active', k === active); });
+    opts[active].scrollIntoView({ block: 'nearest' });
+  }
+  function choose(i) {
+    const o = items[i];
+    if (!o) return;
+    const changed = sel.value !== o.value;
+    sel.value = o.value;
+    close();
+    if (changed) sel.dispatchEvent(new Event('change', { bubbles: true }));   // 触发原来写在 select 上的 onchange
+  }
+  input.addEventListener('focus', open);
+  input.addEventListener('click', function () { if (!wrap.classList.contains('open')) open(); });
+  input.addEventListener('input', function () { render(input.value); wrap.classList.add('open'); if (items.length === 1) highlight(0); });
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (!wrap.classList.contains('open')) open(); highlight(active + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); highlight(active - 1); }
+    else if (e.key === 'Enter') { if (wrap.classList.contains('open')) { e.preventDefault(); choose(active >= 0 ? active : 0); } }
+    else if (e.key === 'Escape') { close(); input.blur(); }
+  });
+  input.addEventListener('blur', function () { setTimeout(close, 120); });
+  list.addEventListener('mousedown', function (e) {
+    const el = e.target.closest('.ss-opt');
+    e.preventDefault();                              // 不让输入框先失焦
+    if (el) choose(Number(el.dataset.i));
+  });
+  sel.addEventListener('change', sync);
+  sel._ssSync = sync;          // 代码里直接改 sel.value（不触发 change）后调用 syncSearchable 刷新显示
+  wrap._ssClose = close;
+  /* 选项被代码整体换掉（切科室后重填排班、切语言）时，显示的文字跟着更新 */
+  new MutationObserver(sync).observe(sel, { childList: true });
+  sync();
+}
+
+function syncSearchable(id) {
+  const el = document.getElementById(id);
+  if (el && el._ssSync) el._ssSync();
+}
+
+function watchSearchableSelects() {
+  const run = function () { document.querySelectorAll('select.searchable:not([data-enhanced])').forEach(enhanceSelect); };
+  run();
+  new MutationObserver(run).observe(document.body, { childList: true, subtree: true });
+  /* 点在列表外面就收起（不只靠输入框失焦：有的触屏浏览器点空白处不会让输入框失焦） */
+  document.addEventListener('mousedown', function (e) {
+    document.querySelectorAll('.ss-wrap.open').forEach(function (w) { if (!w.contains(e.target) && w._ssClose) w._ssClose(); });
+  });
+  document.addEventListener('touchstart', function (e) {
+    document.querySelectorAll('.ss-wrap.open').forEach(function (w) { if (!w.contains(e.target) && w._ssClose) w._ssClose(); });
+  }, { passive: true });
+}
+
 function labelTableCells(table) {
   const ths = table.querySelectorAll('thead th');
   const rows = table.querySelectorAll('tbody tr');
@@ -2094,6 +2430,20 @@ function watchDataTables() {
 
 window.onload = async function () {
   watchDataTables();
+  watchSearchableSelects();
+
+  /* 先问服务端这台机器是不是按 IP 登记的自助机（没配置 HMS_KIOSK_IPS 时一律不是） */
+  try {
+    const m = await fetch('/api/client-mode').then(function (r) { return r.json(); });
+    kioskByIp = !!(m && m.kiosk);
+  } catch (e) { /* 拿不到就只看本机登记 */ }
+
+  /* 自助机、或本人取消了「记住」：localStorage 里不该有就诊人信息，有就清掉 ——
+   * 包括旧版本不分设备写进去的那些，公用电脑上残留的上一位病人信息从这一刻起就没了 */
+  if (!rememberOn()) {
+    PATIENT_KEYS.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+  }
+  bumpIdle();
 
   /* 语言：上次选的，或按浏览器语言 */
   LANG = detectLang();
@@ -2216,7 +2566,7 @@ async function submitWaitlist() {
   const em = readEmail('wlEmail');
   if (!em.ok) { err.textContent = em.msg; return; }
   const patient = {
-    name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard, docKey: doc.docKey,
+    name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard, docKey: doc.docKey, sex: doc.sex,
     phoneCc: ph.phoneCc, phone: ph.phone, email: em.email,
   };
   try {
@@ -2452,6 +2802,286 @@ async function revealPatient(id) {
 
 
 /* ============================================================
+ * 十五（附）、管理端：病人资料
+ *
+ * 列表和详情默认脱敏。admin / auditor 点「查看完整」填理由后看明文，
+ * 服务端写一条 access_log（view_patient）；admin / desk 可以改手机号和邮箱。
+ * 姓名与证件是实名校验的依据，后台不改 —— 改了会和人口库对不上。
+ * ============================================================ */
+
+let ptDetail = null;   // 详情弹窗里当前这位病人
+
+function idTypeLabel(p) {
+  return t('idt_' + p.idType) + (p.nationality ? '（' + countryName(p.nationality) + '）' : '');
+}
+function phoneLabel(p) {
+  return (p.phoneCc && p.phoneCc !== '86' ? '+' + p.phoneCc + ' ' : '') + p.phone;
+}
+function statusBadge(st) {
+  return '<span class="badge ' + statusClass(st) + '">' + statusText(st) + '</span>';
+}
+
+function clearPatientFilters() {
+  document.getElementById('ptKeyword').value = '';
+  document.getElementById('ptType').value = '';
+  renderPatients();
+}
+
+async function renderPatients() {
+  const sel = document.getElementById('ptType');
+  if (!sel.options.length) {
+    sel.innerHTML = '<option value="">全部证件类型</option>'
+      + ID_TYPES.map(function (k) { return '<option value="' + k + '">' + escapeHtml(t('idt_' + k)) + '</option>'; }).join('');
+  }
+  document.getElementById('ptNewBtn').style.display = canWrite() ? '' : 'none';
+  const body = document.getElementById('ptBody');
+  const count = document.getElementById('ptCount');
+  body.innerHTML = '<tr><td colspan="8">加载中…</td></tr>';
+
+  let list = [];
+  try {
+    list = await apiAdminPatients(document.getElementById('ptKeyword').value.trim(), sel.value);
+  } catch (e) {
+    body.innerHTML = '<tr><td colspan="8">加载失败：' + escapeHtml(e.message) + '</td></tr>';
+    count.textContent = '';
+    return;
+  }
+  if (adminTab !== 'patients') return;
+  if (list.length === 0) {
+    body.innerHTML = '<tr><td colspan="8">没有符合条件的病人</td></tr>';
+    count.textContent = '';
+    return;
+  }
+
+  let rows = '';
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i];
+    const st = p.blacklisted ? '<span class="badge orange">黑名单</span>'
+      : (p.booked ? '<span class="badge green">待就诊 ' + p.booked + '</span>' : '—');
+    rows += `
+      <tr>
+        <td><span class="tip">${escapeHtml(p.id)}</span></td>
+        <td><b>${escapeHtml(p.name)}</b> <span class="tip">${sexLabel(p.sex)}</span></td>
+        <td>${escapeHtml(idTypeLabel(p))}<br><span class="tip">${escapeHtml(p.idCard)}</span></td>
+        <td>${escapeHtml(phoneLabel(p))}</td>
+        <td>${p.total}（完成 ${p.completed} · 取消 ${p.cancelled} · 爽约 ${p.noShow}）</td>
+        <td>${p.lastVisit || '—'}</td>
+        <td>${st}</td>
+        <td><button class="btn small" onclick="openPatientDetail('${p.id}')">详情</button></td>
+      </tr>`;
+  }
+  body.innerHTML = rows;
+  count.textContent = '共 ' + list.length + ' 位病人（最多显示 500 位，可用搜索缩小范围）';
+}
+
+async function openPatientDetail(id, reveal, reason) {
+  document.getElementById('ptMask').style.display = 'flex';
+  const info = document.getElementById('ptInfo');
+  if (!reveal) {
+    info.innerHTML = '<p class="tip">加载中…</p>';
+    document.getElementById('ptActions').innerHTML = '';
+    document.getElementById('ptAppts').innerHTML = '';
+  }
+  let p;
+  try {
+    p = await apiAdminPatient(id, reveal, reason);
+  } catch (e) {
+    if (reveal) { alert(e.message); return; }
+    info.innerHTML = '<p class="form-error">' + escapeHtml(e.message) + '</p>';
+    return;
+  }
+  ptDetail = p;
+  renderPatientDetail(false);
+}
+
+function setPatientModalMode(title, showAppts) {
+  document.getElementById('ptTitle').textContent = title;
+  document.getElementById('ptApptsHead').style.display = showAppts ? '' : 'none';
+  document.getElementById('ptApptsTable').style.display = showAppts ? '' : 'none';
+}
+
+function renderPatientDetail(editing) {
+  const p = ptDetail;
+  setPatientModalMode(editing ? '修改病人资料' : '病人资料', true);
+  const row = function (k, v) { return '<p><b>' + k + '：</b>' + v + '</p>'; };
+  let h = '<div class="detail">';
+  if (editing) {
+    /* 留空 = 不修改。脱敏状态下拿不到原值，所以手机号 / 邮箱 / 证件都默认不动，要改就整项重新填 */
+    h += '<p><label for="peName">姓名</label><input id="peName" type="text" maxlength="50" value="' + escapeHtml(p.name) + '" /></p>';
+    h += row('当前证件', escapeHtml(idTypeLabel(p)) + ' · ' + escapeHtml(p.idCard));
+    h += '<p><label><input type="checkbox" id="peDocOn" onchange="document.getElementById(\'peDocBox\').style.display = this.checked ? \'\' : \'none\'" /> 修改证件</label></p>';
+    h += '<div id="peDocBox" style="display:none">' + docFieldsHtml('pe', { idType: p.idType, nationality: p.nationality }, false) + '</div>';
+    /* 性别：身份证 / 居住证跟着证件号走，不能单独改；其他证件可以改 */
+    h += sexFieldHtml('pe', p.idType, p.sex);
+    if (docHasSex(p.idType)) h += row('性别', sexLabel(p.sex) + '（按证件号自动判断）');
+    h += row('当前手机号', escapeHtml(phoneLabel(p)));
+    h += phoneFieldHtml('pe', { phoneCc: p.phoneCc, phone: '' });
+    h += '<p class="tip">手机号留空表示不修改。</p>';
+    h += row('当前邮箱', escapeHtml(p.email || '—'));
+    h += '<p><label for="peEmail">新邮箱</label><input id="peEmail" type="text" placeholder="留空表示不修改" /></p>';
+    if (p.email) h += '<p><label><input type="checkbox" id="peEmailClear" /> 清除邮箱（不再收邮件提醒）</label></p>';
+    h += '<p class="tip">改姓名或证件会同步到实名校验库与黑名单，修改会记入访问日志。</p>';
+    h += '<p class="form-error" id="peErr" role="alert"></p>';
+  } else {
+    h += row('姓名', '<b>' + escapeHtml(p.name) + '</b>' + (p.blacklisted ? ' <span class="badge orange">黑名单</span>' : ''));
+    h += row('性别', sexLabel(p.sex));
+    h += row('档案号', escapeHtml(p.id));
+    h += row('证件', escapeHtml(idTypeLabel(p)) + ' · ' + escapeHtml(p.idCard));
+    h += row('手机号', escapeHtml(phoneLabel(p)));
+    h += row('邮箱', escapeHtml(p.email || '—'));
+    h += row('建档时间', fmtTime(p.createdAt)
+      + (p.updatedAt && p.updatedAt !== p.createdAt ? ' · 最近修改 ' + fmtTime(p.updatedAt) : ''));
+    h += row('挂号统计', '共 ' + p.total + ' 次：待就诊 ' + p.booked + ' · 已完成 ' + p.completed
+      + ' · 已取消 ' + p.cancelled + ' · 爽约 ' + p.noShow);
+  }
+  h += '</div>';
+  if (p.masked && !editing) h += '<p class="tip">证件号、手机号、邮箱已脱敏。查看完整信息需要填写理由，并会记入访问日志。</p>';
+  document.getElementById('ptInfo').innerHTML = h;
+
+  let act = '';
+  if (editing) {
+    act += '<button class="btn" onclick="renderPatientDetail(false)">取消</button>';
+    act += '<button class="btn primary" onclick="savePatientEdit()">保存</button>';
+  } else {
+    if (p.masked && (myRole() === 'admin' || myRole() === 'auditor')) {
+      act += '<button class="btn" onclick="revealPatientDetail()">查看完整</button>';
+    }
+    if (canWrite()) act += '<button class="btn" onclick="renderPatientDetail(true)">修改资料</button>';
+    if (myRole() === 'admin') act += '<button class="btn danger" onclick="deletePatient()">删除档案</button>';
+  }
+  document.getElementById('ptActions').innerHTML = act;
+
+  let rows = '';
+  const list = p.appointments || [];
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i];
+    rows += `
+      <tr>
+        <td><span class="tip">${escapeHtml(a.appointmentNo || a.id)}</span></td>
+        <td>${escapeHtml(a.deptName)} · ${escapeHtml(a.doctorName)}</td>
+        <td>${escapeHtml(a.date)} ${escapeHtml(a.period)}</td>
+        <td>${fmtMoney(a.fee)}</td>
+        <td>${statusBadge(a.status)}</td>
+      </tr>`;
+  }
+  document.getElementById('ptAppts').innerHTML = rows || '<tr><td colspan="5">还没有挂号记录</td></tr>';
+}
+
+function revealPatientDetail() {
+  const reason = prompt('查看完整病人信息需要填写理由（至少 2 个字）：\n例如：患者来电核对身份 / 窗口办理退费');
+  if (reason === null) return;
+  if (reason.trim().length < 2) { alert('理由至少 2 个字'); return; }
+  openPatientDetail(ptDetail.id, true, reason.trim());
+}
+
+async function savePatientEdit() {
+  const err = document.getElementById('peErr');
+  err.textContent = '';
+  const body = {};
+  const nm = readName('peName');
+  if (!nm.ok) { err.textContent = nm.msg; return; }
+  if (nm.name !== ptDetail.name) body.name = nm.name;
+  if (document.getElementById('peDocOn').checked) {
+    const doc = readDoc('pe');
+    if (!doc.ok) { err.textContent = doc.msg; return; }
+    body.idType = doc.idType; body.nationality = doc.nationality; body.idCard = doc.idCard;
+    if (doc.sex) body.sex = doc.sex;
+  } else {
+    const sx = document.getElementById('peSex').value;
+    if (sx && sx !== ptDetail.sex && !docHasSex(ptDetail.idType)) body.sex = sx;
+  }
+  if (document.getElementById('pePhone').value.trim()) {
+    const ph = readPhone('pe');
+    if (!ph.ok) { err.textContent = ph.msg; return; }
+    body.phoneCc = ph.phoneCc; body.phone = ph.phone;
+  }
+  const clear = document.getElementById('peEmailClear');
+  if (clear && clear.checked) body.clearEmail = true;
+  else if (document.getElementById('peEmail').value.trim()) {
+    const em = readEmail('peEmail');
+    if (!em.ok) { err.textContent = em.msg; return; }
+    body.email = em.email;
+  }
+  if (!Object.keys(body).length) { err.textContent = '没有修改任何内容'; return; }
+  try {
+    await apiAdminPatientUpdate(ptDetail.id, body);
+  } catch (e) {
+    err.textContent = e.message;
+    return;
+  }
+  alert('已保存');
+  openPatientDetail(ptDetail.id);
+  renderPatients();
+}
+
+/* 新建病人（窗口建档）：和挂号页同一套姓名 / 证件 / 手机号校验 */
+function openPatientCreate() {
+  ptDetail = null;
+  document.getElementById('ptMask').style.display = 'flex';
+  setPatientModalMode('新建病人', false);
+  let h = '<div class="detail">';
+  h += '<p><label for="pnName">姓名</label><input id="pnName" type="text" maxlength="50" placeholder="与证件一致的姓名" /></p>';
+  h += docFieldsHtml('pn', {}, true);
+  h += '<p><label for="pnEmail">邮箱</label><input id="pnEmail" type="text" placeholder="选填，用于就诊提醒" /></p>';
+  h += '<p class="tip">证件已有档案时不会重复建档；姓名会登记为该证件的实名信息。</p>';
+  h += '<p class="form-error" id="pnErr" role="alert"></p></div>';
+  document.getElementById('ptInfo').innerHTML = h;
+  document.getElementById('ptActions').innerHTML =
+    '<button class="btn" onclick="closePatientDetail()">取消</button>'
+    + '<button class="btn primary" onclick="savePatientCreate()">建档</button>';
+}
+
+async function savePatientCreate() {
+  const err = document.getElementById('pnErr');
+  err.textContent = '';
+  const nm = readName('pnName');
+  if (!nm.ok) { err.textContent = nm.msg; return; }
+  const doc = readDoc('pn');
+  if (!doc.ok) { err.textContent = doc.msg; return; }
+  const ph = readPhone('pn');
+  if (!ph.ok) { err.textContent = ph.msg; return; }
+  const em = readEmail('pnEmail');
+  if (!em.ok) { err.textContent = em.msg; return; }
+  let r;
+  try {
+    r = await apiAdminPatientCreate({ name: nm.name, idType: doc.idType, nationality: doc.nationality,
+      idCard: doc.idCard, sex: doc.sex, phoneCc: ph.phoneCc, phone: ph.phone, email: em.email });
+  } catch (e) {
+    err.textContent = e.message;
+    return;
+  }
+  renderPatients();
+  openPatientDetail(r.id);
+}
+
+/* 删除档案：仅管理员，必须填理由。待就诊的号先退掉（号源归还、候补补位），再删全部记录 */
+async function deletePatient() {
+  const p = ptDetail;
+  let warn = '确定删除「' + p.name + '」的档案吗？此操作不能撤销。\n\n将删除：档案、全部 ' + p.total + ' 条挂号记录、候补和登录凭证。';
+  if (p.booked) warn += '\n其中 ' + p.booked + ' 个待就诊的号会先退号，号源归还给其他患者。';
+  warn += '\n黑名单与访问日志会保留。';
+  if (!confirm(warn)) return;
+  const reason = prompt('请填写删除理由（至少 2 个字，会记入访问日志）：');
+  if (reason === null) return;
+  if (reason.trim().length < 2) { alert('理由至少 2 个字'); return; }
+  try {
+    await apiAdminPatientDelete(p.id, reason.trim());
+  } catch (e) {
+    alert(e.message);
+    return;
+  }
+  alert('已删除');
+  closePatientDetail();
+  renderPatients();
+}
+
+function closePatientDetail() {
+  document.getElementById('ptMask').style.display = 'none';
+  ptDetail = null;
+}
+
+
+/* ============================================================
  * 十六、管理端：候补队列 / 窗口代约 / 访问日志 / 发件箱 / 黑名单
  * ============================================================ */
 
@@ -2568,7 +3198,7 @@ async function submitProxy() {
   if (!em.ok) { alert(em.msg); return; }
 
   const done = await bookWithCaptcha(sid, {
-    name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard,
+    name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard, sex: doc.sex,
     phoneCc: ph.phoneCc, phone: ph.phone, email: em.email,
   }, 'proxy');
 
@@ -2593,6 +3223,9 @@ async function submitProxy() {
 const ACTION_LABEL = {
   reveal_idcard: '查看完整身份证',
   view_patient: '查看患者档案',
+  create_patient: '新建病人档案',
+  edit_patient: '修改病人资料',
+  delete_patient: '删除病人档案',
   export_records: '导出记录',
   view_audit: '查看审计时间线',
   blacklist: '加入黑名单',

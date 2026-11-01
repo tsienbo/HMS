@@ -26,9 +26,12 @@
       <select id="langSel" class="lang-sel" onchange="setLang(this.value)" data-i18n-title="language" aria-label="Language"></select>
       <button class="btn small" id="fontToggle" onclick="toggleBigFont()"
               data-i18n-title="big_font_title" title="把全站字号放大一档"><span data-i18n="big_font">大字版</span></button>
-      <button class="btn small" id="logoutBtn" onclick="doLogout()" style="display:none" data-i18n="logout">退出登录</button>
+      <!-- 后台账号登录后显示「管理员已登录」，点一下进后台；退出登录在后台页签里 -->
+      <button class="btn small staff-on" id="staffBadge" onclick="goAdmin()" style="display:none" title="进入后台管理"></button>
     </span>
   </div>
+  <!-- 手机顶栏放不下第三个按钮，登录状态改成顶栏下面一条细横幅 -->
+  <div class="staff-bar" id="staffBar" onclick="goAdmin()"></div>
 </div>
 
 <div class="wrap main">
@@ -129,10 +132,13 @@
   <div id="page-admin" style="display:none">
     <h2>管理后台</h2>
     <p class="tip" id="adminWho"></p>
+    <!-- 本机是医院自助机还是个人设备（仅管理员看得到，见 renderKioskSetting） -->
+    <p class="kiosk-setting" id="kioskSetting"></p>
     <p class="tip" id="adminTip"></p>
     <!-- 页签按钮：每行几个由 layoutAdminTabs() 按宽度算，保证各行数量相同 -->
     <div class="actions admin-tabs" id="adminTabs">
       <button class="btn" id="tabRecords" onclick="showAdminTab('records')">挂号记录</button>
+      <button class="btn" id="tabPatients" onclick="showAdminTab('patients')">病人资料</button>
       <button class="btn" id="tabSchedules" onclick="showAdminTab('schedules')">排班号源</button>
       <button class="btn" id="tabWaitlist" onclick="showAdminTab('waitlist')">候补队列</button>
       <button class="btn" id="tabProxy" onclick="showAdminTab('proxy')">窗口代约</button>
@@ -146,8 +152,8 @@
       <!-- 子页签一：挂号记录 -->
       <div id="panel-records">
         <div class="filters">
-          <select id="fDept" onchange="adminDept = this.value; renderRecords()"></select>
-          <select id="fDate" onchange="adminDate = this.value; renderRecords()"></select>
+          <select class="searchable" id="fDept" onchange="adminDept = this.value; renderRecords()"></select>
+          <select class="searchable" id="fDate" onchange="adminDate = this.value; renderRecords()"></select>
           <input id="fKeyword" type="text" placeholder="姓名 / 手机号 / 单号"
                  onkeydown="if (event.key === 'Enter') doSearch()" />
           <button class="btn" onclick="doSearch()">搜索</button>
@@ -165,10 +171,30 @@
         <p class="tip" id="recordsCount"></p>
       </div>
 
+      <!-- 子页签：病人资料（默认脱敏，点「详情」看档案与全部挂号） -->
+      <div id="panel-patients" style="display:none">
+        <div class="filters">
+          <select id="ptType" onchange="renderPatients()"></select>
+          <input id="ptKeyword" type="text" placeholder="姓名 / 手机号 / 证件号 / 档案号"
+                 onkeydown="if (event.key === 'Enter') renderPatients()" />
+          <button class="btn" onclick="renderPatients()">搜索</button>
+          <button class="btn" onclick="clearPatientFilters()">清空筛选</button>
+          <button class="btn primary" id="ptNewBtn" onclick="openPatientCreate()">＋ 新建病人</button>
+        </div>
+        <table class="data">
+          <thead>
+            <tr><th>档案号</th><th>姓名</th><th>证件</th><th>手机号</th>
+                <th>挂号次数</th><th>最近就诊</th><th>状态</th><th>操作</th></tr>
+          </thead>
+          <tbody id="ptBody"></tbody>
+        </table>
+        <p class="tip" id="ptCount"></p>
+      </div>
+
       <!-- 子页签二：排班号源 -->
       <div id="panel-schedules" style="display:none">
         <div class="filters">
-          <select id="sDept" onchange="adminDept = this.value; renderSchedules()"></select>
+          <select class="searchable" id="sDept" onchange="adminDept = this.value; renderSchedules()"></select>
         </div>
         <div class="dates" id="scheduleDates"></div>
         <p class="tip" id="schedulesCount"></p>
@@ -197,9 +223,9 @@
           <div class="box">
             <h3>选号源</h3>
             <p><label for="pxDept">科室</label>
-              <select id="pxDept" onchange="proxyDeptChange()"></select></p>
+              <select class="searchable" id="pxDept" onchange="proxyDeptChange()"></select></p>
             <p><label for="pxSchedule">时段</label>
-              <select id="pxSchedule"></select></p>
+              <select class="searchable" id="pxSchedule"></select></p>
             <p class="tip" id="pxRemain"></p>
           </div>
           <div class="box">
@@ -327,6 +353,25 @@
     <p class="tip">这张表由数据库触发器写入，应用层改不了。</p>
     <div class="actions">
       <button class="btn" onclick="closeTimeline()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 弹窗：病人资料详情（后台） ==================== -->
+<div class="modal-mask" id="ptMask" style="display:none">
+  <div class="modal wide">
+    <h3 id="ptTitle">病人资料</h3>
+    <div id="ptInfo"></div>
+    <div class="actions" id="ptActions"></div>
+    <h3 style="margin-top:14px" id="ptApptsHead">挂号记录</h3>
+    <table class="data" id="ptApptsTable">
+      <thead>
+        <tr><th>单号</th><th>科室 / 医生</th><th>就诊时间</th><th>费用</th><th>状态</th></tr>
+      </thead>
+      <tbody id="ptAppts"></tbody>
+    </table>
+    <div class="actions">
+      <button class="btn" onclick="closePatientDetail()">关闭</button>
     </div>
   </div>
 </div>

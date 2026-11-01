@@ -218,24 +218,26 @@ CREATE TABLE IF NOT EXISTS access_log (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
   CONSTRAINT ck_access_action CHECK (
-    action IN ('reveal_idcard','view_patient','export_records','view_audit','blacklist')
+    action IN ('reveal_idcard','view_patient','export_records','view_audit','blacklist',
+               'create_patient','edit_patient','delete_patient')
   ),
   CONSTRAINT ck_access_target CHECK (target_type IN ('patient','appointment','waitlist'))
 );
 
--- 表可能是上一版脚本建的，动作枚举里没有 blacklist。
--- 这里比对一次约束定义，不一致就重建 —— 保证老库升级后也能记拉黑动作。
+-- 表可能是上一版脚本建的，动作枚举里没有 blacklist / 后台增删改病人。
+-- 这里比对一次约束定义，不一致就重建 —— 保证老库升级后也能记这些动作。
 DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_constraint c
      WHERE c.conname = 'ck_access_action'
        AND c.conrelid = 'access_log'::regclass
-       AND pg_get_constraintdef(c.oid) NOT LIKE '%blacklist%'
+       AND pg_get_constraintdef(c.oid) NOT LIKE '%delete_patient%'
   ) THEN
     ALTER TABLE access_log DROP CONSTRAINT ck_access_action;
     ALTER TABLE access_log ADD CONSTRAINT ck_access_action CHECK (
-      action IN ('reveal_idcard','view_patient','export_records','view_audit','blacklist')
+      action IN ('reveal_idcard','view_patient','export_records','view_audit','blacklist',
+                 'create_patient','edit_patient','delete_patient')
     );
   END IF;
 END $$;
@@ -311,6 +313,8 @@ LANGUAGE plpgsql AS $$
 DECLARE
   sc schedules%ROWTYPE;
   v_next INTEGER;
+  v_limit CHAR(1);
+  v_sex   CHAR(1);
 BEGIN
   -- 锁住排班行：既防止并发下序号重复，也保证「还有没有号」的判断是准的
   SELECT * INTO sc FROM schedules WHERE id = NEW.schedule_id FOR UPDATE;
@@ -322,13 +326,23 @@ BEGIN
     RAISE EXCEPTION '该医生已停诊，无法候补';
   END IF;
 
+  -- 科室性别限制：妇产科只接诊女性、男科只接诊男性（departments.sex_limit）
+  SELECT d.sex_limit, p.sex INTO v_limit, v_sex
+    FROM departments d, patients p
+   WHERE d.id = sc.dept_id AND p.id = NEW.patient_id;
+  IF v_limit IS NOT NULL AND v_sex IS DISTINCT FROM v_limit THEN
+    RAISE EXCEPTION '该科室仅接诊%患者', CASE v_limit WHEN 'F' THEN '女性' ELSE '男性' END;
+  END IF;
+
   IF sc.work_date < CURRENT_DATE THEN
     RAISE EXCEPTION '不能候补已过去的日期';
   END IF;
 
-  -- 还有号就直接挂，不该排队 —— 否则候补队列会变成「慢一点再挂号」的通道
-  IF sc.booked_count < sc.max_quota THEN
-    RAISE EXCEPTION '该时段还有 % 个号源，请直接挂号', sc.max_quota - sc.booked_count;
+  -- 还有（没被候补预留的）号就直接挂，不该排队 —— 否则候补队列会变成「慢一点再挂号」的通道
+  IF sc.booked_count + (SELECT COUNT(*) FROM waitlist w
+                         WHERE w.schedule_id = NEW.schedule_id AND w.status = 'offered'
+                           AND w.offer_expires_at > clock_timestamp()) < sc.max_quota THEN
+    RAISE EXCEPTION '该时段还有号源，请直接挂号';
   END IF;
 
   IF EXISTS (SELECT 1 FROM appointments a
@@ -338,12 +352,12 @@ BEGIN
     RAISE EXCEPTION '您已预约该时段，无需候补';
   END IF;
 
-  -- 同一排班内的排队序号：最大值 + 1。已过期 / 已转正的行不参与，
-  -- 否则序号会一路涨上去，前端显示「您排在第 37 位」而实际只有 3 个人。
+  -- 同一排班内的排队序号：在该排班的全部历史行里取最大值 + 1，永久递增。
+  -- （uq_waitlist_schedule_pos 管的是全部历史；只看进行中的行，取消后会撞号。）
+  -- 「前面还有几人」由接口按进行中的行另算，不用这个序号直接展示。
   SELECT COALESCE(MAX(position), 0) + 1 INTO v_next
     FROM waitlist
-   WHERE schedule_id = NEW.schedule_id
-     AND status IN ('waiting','offered');
+   WHERE schedule_id = NEW.schedule_id;
   NEW.position := v_next;
 
   IF NEW.status IS DISTINCT FROM 'waiting' THEN
@@ -360,7 +374,7 @@ LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.status IS DISTINCT FROM OLD.status THEN
     IF NOT (
-         (OLD.status = 'waiting'   AND NEW.status IN ('offered','cancelled','expired'))
+         (OLD.status = 'waiting'   AND NEW.status IN ('offered','converted','cancelled','expired'))
       OR (OLD.status = 'offered'   AND NEW.status IN ('converted','cancelled','expired'))
     ) THEN
       RAISE EXCEPTION '非法候补状态流转：% → %', OLD.status, NEW.status;
@@ -406,7 +420,10 @@ BEGIN
   IF NOT FOUND OR sc.closed OR sc.work_date < CURRENT_DATE THEN
     RETURN NULL;
   END IF;
-  IF sc.booked_count >= sc.max_quota THEN
+  -- 没被占用、也没给别的候补留着的号才能再通知一位
+  IF sc.booked_count + (SELECT COUNT(*) FROM waitlist x
+                         WHERE x.schedule_id = p_schedule AND x.status = 'offered'
+                           AND x.offer_expires_at > clock_timestamp()) >= sc.max_quota THEN
     RETURN NULL;                       -- 号又被别人抢走了，谁也不用通知
   END IF;
 
@@ -536,14 +553,107 @@ BEGIN
 END;
 $$;
 
+-- 7.5b 挂号前校验（覆盖 schema.sql 里 v2 版的 fn_appt_before_insert，以这里为准）
+--      v3 起多了两件事：先锁患者行再锁排班行（并发下「同日最多 2 个号」不会被突破）；
+--      已通知且未过期的候补算作预留名额（「保留 2 小时」真的占住号）。
+--      放在本文件而不是改 schema.sql：已有库升级只会重跑本文件，schema.sql 开头是 DROP TABLE。
+CREATE OR REPLACE FUNCTION fn_appt_before_insert() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  sc      schedules%ROWTYPE;
+  v_next  INTEGER;
+  v_held  INTEGER;
+  v_mine  BOOLEAN;
+  v_limit CHAR(1);
+  v_sex   CHAR(1);
+BEGIN
+  -- ★ 先锁患者行，再锁排班行（全系统同一顺序，不会死锁）。
+  --   同一患者的两笔挂号在这里排队：后一笔等前一笔提交后再做下面的限挂检查，
+  --   才能看到前一笔 —— 否则两条连接同时挂不同科室，「同日最多 2 个号」会被突破。
+  PERFORM 1 FROM patients WHERE id = NEW.patient_id FOR UPDATE;
+
+  SELECT * INTO sc FROM schedules WHERE id = NEW.schedule_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '排班不存在，请刷新后重试';
+  END IF;
+
+  IF sc.closed THEN
+    RAISE EXCEPTION '该医生已停诊，无法挂号';
+  END IF;
+
+  IF sc.work_date < CURRENT_DATE THEN
+    RAISE EXCEPTION '不能预约已过去的日期';
+  END IF;
+
+  IF sc.booked_count >= sc.max_quota THEN
+    RAISE EXCEPTION '该时段号源已挂完，请选择其他时段';
+  END IF;
+
+  -- 候补「保留 2 小时」要真的占住名额：已通知且未过期的候补数算作预留。
+  -- 本人就是被通知的那位，可以用掉给他留的那一个。
+  SELECT COUNT(*) FILTER (WHERE w.patient_id <> NEW.patient_id),
+         COALESCE(bool_or(w.patient_id = NEW.patient_id), FALSE)
+    INTO v_held, v_mine
+    FROM waitlist w
+   WHERE w.schedule_id = NEW.schedule_id
+     AND w.status = 'offered'
+     AND w.offer_expires_at > clock_timestamp();
+  IF NOT v_mine AND sc.booked_count + v_held >= sc.max_quota THEN
+    RAISE EXCEPTION '该时段剩余号源已为候补患者保留，请选择其他时段或加入候补';
+  END IF;
+
+  -- 科室性别限制：妇产科只接诊女性、男科只接诊男性（departments.sex_limit）
+  SELECT d.sex_limit, p.sex INTO v_limit, v_sex
+    FROM departments d, patients p
+   WHERE d.id = sc.dept_id AND p.id = NEW.patient_id;
+  IF v_limit IS NOT NULL AND v_sex IS DISTINCT FROM v_limit THEN
+    RAISE EXCEPTION '该科室仅接诊%患者', CASE v_limit WHEN 'F' THEN '女性' ELSE '男性' END;
+  END IF;
+
+  -- 同一个号源，同一个人只能有一张有效单（取消之后可以重挂）
+  IF EXISTS (SELECT 1 FROM appointments a
+              WHERE a.schedule_id = NEW.schedule_id
+                AND a.patient_id  = NEW.patient_id
+                AND a.status IN ('booked','completed')) THEN
+    RAISE EXCEPTION '您已预约该时段，请勿重复挂号';
+  END IF;
+
+  -- 同一患者同一天同一科室只能有一个有效号（防止一个人把整科号挂满）
+  IF EXISTS (SELECT 1 FROM appointments a
+               JOIN schedules s2 ON s2.id = a.schedule_id
+               JOIN doctors   d2 ON d2.id = a.doctor_id
+              WHERE a.patient_id = NEW.patient_id
+                AND a.status = 'booked'
+                AND s2.work_date = sc.work_date
+                AND d2.dept_id  = sc.dept_id) THEN
+    RAISE EXCEPTION '同一就诊人当天在该科室已有有效预约，请勿重复挂号';
+  END IF;
+
+  -- 号序：取该排班已有的最大号 + 1。退号留下的空号不回收，
+  -- 这样历史单据上的「第几号」永远不变（uq_appt_schedule_seq 也要求如此）。
+  SELECT COALESCE(MAX(seq_no), 0) + 1 INTO v_next
+    FROM appointments WHERE schedule_id = NEW.schedule_id;
+  NEW.seq_no := v_next;
+
+  -- 新建的单据只可能是「待就诊」，不允许直接建成已完成 / 爽约
+  IF NEW.status IS DISTINCT FROM 'booked' THEN
+    RAISE EXCEPTION '新建挂号单的状态只能是 booked';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
 -- 7.6 候补转正时，把候补行标成 converted（AFTER INSERT on appointments）
 --     不需要应用层再写一句 UPDATE：挂号单一落地，对应的候补自动闭环。
 CREATE OR REPLACE FUNCTION fn_appt_close_waitlist() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
+  -- 排队中（waiting）直接挂上号的也算转正：补上 offered_at，满足 ck_waitlist_offer_pair
   UPDATE waitlist
      SET status = 'converted',
-         converted_appointment_id = NEW.id
+         converted_appointment_id = NEW.id,
+         offered_at = COALESCE(offered_at, clock_timestamp())
    WHERE schedule_id = NEW.schedule_id
      AND patient_id  = NEW.patient_id
      AND status IN ('waiting','offered');

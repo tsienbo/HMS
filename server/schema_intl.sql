@@ -41,12 +41,14 @@ END;
 $$;
 
 -- 证件号格式是否合法（按证件类型分别判断）
+-- ★ 调用 fn_gb11643_ok 必须带 public. 前缀：pg_restore 导入数据时 search_path 是空的，
+--   CHECK 约束里不带前缀会找不到函数，整张 patients 表导不进去（备份就恢复不了）
 CREATE OR REPLACE FUNCTION fn_doc_valid(p_type TEXT, p_nat TEXT, p_no TEXT)
 RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$
   SELECT CASE p_type
-    WHEN 'CN_ID'    THEN fn_gb11643_ok(p_no) AND p_no !~ '^(81|82|83|9)'
-    WHEN 'HMT_RES'  THEN fn_gb11643_ok(p_no) AND p_no ~ '^8[123]0000'
-    WHEN 'FRP'      THEN (fn_gb11643_ok(p_no) AND p_no ~ '^9') OR p_no ~ '^[A-Z]{3}[0-9]{12}$'
+    WHEN 'CN_ID'    THEN public.fn_gb11643_ok(p_no) AND p_no !~ '^(81|82|83|9)'
+    WHEN 'HMT_RES'  THEN public.fn_gb11643_ok(p_no) AND p_no ~ '^8[123]0000'
+    WHEN 'FRP'      THEN (public.fn_gb11643_ok(p_no) AND p_no ~ '^9') OR p_no ~ '^[A-Z]{3}[0-9]{12}$'
     WHEN 'HK_MO'    THEN p_no ~ '^[HM][0-9]{8}([0-9]{2})?$'
     WHEN 'TW'       THEN p_no ~ '^[0-9]{8}([0-9]{2})?$'
     WHEN 'PASSPORT' THEN p_no ~ '^[A-Z0-9]{5,14}$' AND coalesce(p_nat, '') ~ '^[A-Z]{2}$'
@@ -198,3 +200,40 @@ BEGIN
     END IF;
   END LOOP;
 END $$;
+
+-- ------------------------------------------------------------
+-- 6. 性别与科室性别限制（妇产科只接诊女性、男科只接诊男性）
+--    patients.sex：M / F。身份证、港澳台居住证的第 17 位奇数为男、偶数为女，
+--    这两种证件的 sex 必须与证件号一致（ck_patients_sex）；护照、通行证、永居证由患者在表单里选。
+--    departments.sex_limit：NULL 表示不限，F 只接诊女性，M 只接诊男性。
+--    限制本身写在挂号 / 候补的 BEFORE INSERT 触发器里（schema_v3.sql），绕过接口也挂不上。
+-- ------------------------------------------------------------
+ALTER TABLE patients    ADD COLUMN IF NOT EXISTS sex       CHAR(1);
+ALTER TABLE departments ADD COLUMN IF NOT EXISTS sex_limit CHAR(1);
+
+-- 已有的身份证 / 居住证档案按证件号补上性别
+UPDATE patients
+   SET sex = CASE WHEN substr(id_card, 17, 1)::int % 2 = 1 THEN 'M' ELSE 'F' END
+ WHERE sex IS NULL AND id_type IN ('CN_ID', 'HMT_RES');
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_patients_sex') THEN
+    ALTER TABLE patients ADD CONSTRAINT ck_patients_sex CHECK (
+      sex IN ('M', 'F')
+      AND (id_type NOT IN ('CN_ID', 'HMT_RES')
+           OR sex = CASE WHEN substr(id_card, 17, 1)::int % 2 = 1 THEN 'M' ELSE 'F' END)
+    );
+  END IF;
+  -- 全部档案都有性别了才加 NOT NULL（旧库里若有补不出性别的护照档案，先留空，挂限制科室时会被拦下）
+  IF NOT EXISTS (SELECT 1 FROM patients WHERE sex IS NULL) THEN
+    ALTER TABLE patients ALTER COLUMN sex SET NOT NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_dept_sex_limit') THEN
+    ALTER TABLE departments ADD CONSTRAINT ck_dept_sex_limit CHECK (sex_limit IS NULL OR sex_limit IN ('M', 'F'));
+  END IF;
+END $$;
+
+-- 已有库：妇产科、男科补上限制（只在还没设置过时补，后台改过就不覆盖）
+UPDATE departments SET sex_limit = 'F' WHERE id = 'D06' AND sex_limit IS NULL;
+UPDATE departments SET sex_limit = 'M' WHERE id = 'D13' AND sex_limit IS NULL;
