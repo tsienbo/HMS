@@ -555,9 +555,13 @@ def patient_mine_patch():
         ok, msg, name = check_name(name)
         if not ok:
             return jsonify(error=msg), 400
-        ok, msg, phone = check_phone(phone, phone_cc)
-        if not ok:
-            return jsonify(error=msg), 400
+        # 手机号不传 = 不修改（资料页的手机号框留空就是保持原号码）
+        if phone:
+            ok, msg, phone = check_phone(phone, phone_cc)
+            if not ok:
+                return jsonify(error=msg), 400
+        else:
+            phone = None
         ok, msg, email = check_email(email)
         if not ok:
             return jsonify(error=msg), 400
@@ -568,19 +572,21 @@ def patient_mine_patch():
         upd = query(
             """WITH u AS (
                  UPDATE patients
-                    SET name = %s, phone_cc = %s, phone = %s, email = NULLIF(%s, ''), updated_at = NOW()
+                    SET name = %s,
+                        phone_cc = CASE WHEN %s::text IS NULL THEN phone_cc ELSE %s END,
+                        phone    = COALESCE(%s, phone),
+                        email = NULLIF(%s, ''), updated_at = NOW()
                   WHERE id = %s
               RETURNING id, doc_key, name)
                , r AS (
                  UPDATE citizen_registry c SET name = u.name FROM u WHERE c.id_card = u.doc_key)
                SELECT id FROM u""",
-            [name, phone_cc, phone, email, pid],
+            [name, phone, phone_cc, phone, email, pid],
         )
         if upd.rowcount == 0:
             return jsonify(error="未找到该就诊人的档案，请先挂一次号"), 404
 
-        return jsonify(ok=True, name=name,
-                       phone=mask_phone_str(phone), email=email or "")
+        return jsonify(ok=True, name=name, email=email or "")
     except Exception as err:                                  # noqa: BLE001
         app.logger.error("[患者档案更新] %s", err)
         status, msg = db_error(err)

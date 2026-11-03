@@ -629,6 +629,11 @@ BEGIN
     RAISE EXCEPTION '同一就诊人当天在该科室已有有效预约，请勿重复挂号';
   END IF;
 
+  -- 挂号费只能按医生现行价格收：价目历史表里的旧价格（外键允许）不能用来新挂号
+  IF NEW.fee IS DISTINCT FROM (SELECT d.fee FROM doctors d WHERE d.id = NEW.doctor_id) THEN
+    RAISE EXCEPTION '挂号费必须按医生现行价格收取';
+  END IF;
+
   -- 号序：取该排班已有的最大号 + 1。退号留下的空号不回收，
   -- 这样历史单据上的「第几号」永远不变（uq_appt_schedule_seq 也要求如此）。
   SELECT COALESCE(MAX(seq_no), 0) + 1 INTO v_next
@@ -890,3 +895,87 @@ CREATE INDEX IF NOT EXISTS idx_ivl_id_card ON identity_verify_log (id_card, crea
 
 -- fn_verify_identity 的定义在 schema_intl.sql（v3.5 起支持护照等证件、外文姓名比对）
 
+-- ============================================================
+-- 14. 挂号费：按湖北省门诊诊查费标准定价 + 价目历史表
+-- ============================================================
+-- 依据《关于做好综合诊查类……医疗服务项目整合和价格调整的通知》（鄂医保发〔2025〕56 号）
+-- 附件 1 的省级最高指导价（黄冈市中心医院不属于同济、协和、省人民、中南四家，按一般标准）：
+--   门诊诊查费（普通门诊）  主治及以下 4.5 元；副主任医师加收 10 元；主任医师加收 17 元；
+--                           口腔、妇科再加收 2 元
+--   门诊诊查费（中医辨证论治）11.5 元；副主任医师加收 5 元；主任医师加收 10 元
+-- 以前的 50 / 30 / 15 元是按「挂号费 + 诊查费」的旧思路随手定的，比实际高出数倍。
+--
+-- 为什么要价目历史表：挂号单上的挂号费是成交时的价格快照，原来用复合外键指向
+-- doctors(id, fee) 防篡改，代价是医生一调价，引用旧价格的挂号单就违反外键 —— 调不了价。
+-- 现在外键改指向 doctor_fee_history：医生执行过的每个价格一行，旧单据引用旧价格，
+-- 新挂号由 fn_appt_before_insert 要求等于现行价格。一元挂号单照样写不进去（从来没有这个价）。
+
+CREATE OR REPLACE FUNCTION public.fn_doctor_fee(p_title TEXT, p_dept TEXT) RETURNS NUMERIC
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT (CASE
+    WHEN p_dept = 'D10' THEN                         -- 中医科：门诊诊查费（中医辨证论治）
+      CASE p_title WHEN '主任医师' THEN 21.50 WHEN '副主任医师' THEN 16.50 ELSE 11.50 END
+    ELSE                                             -- 门诊诊查费（普通门诊）
+      CASE p_title WHEN '主任医师' THEN 21.50 WHEN '副主任医师' THEN 14.50 ELSE 4.50 END
+      + CASE WHEN p_dept IN ('D06', 'D09') THEN 2.00 ELSE 0 END   -- 妇产科、口腔科加收 2 元
+  END)::NUMERIC(8,2)
+$$;
+
+CREATE TABLE IF NOT EXISTS doctor_fee_history (
+  doctor_id  VARCHAR(8)   NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  fee        NUMERIC(8,2) NOT NULL,
+  valid_from TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  valid_to   TIMESTAMPTZ,                              -- NULL = 现行价格
+  CONSTRAINT pk_doctor_fee_history PRIMARY KEY (doctor_id, fee),
+  CONSTRAINT ck_dfh_fee    CHECK (fee > 0),
+  CONSTRAINT ck_dfh_period CHECK (valid_to IS NULL OR valid_to >= valid_from)
+);
+-- 同一位医生同一时刻只有一个现行价格
+CREATE UNIQUE INDEX IF NOT EXISTS uq_dfh_current ON doctor_fee_history (doctor_id) WHERE valid_to IS NULL;
+
+-- 医生价格变了 → 旧价格记为失效、新价格记为现行（调回以前的价格时重新启用那一行）
+CREATE OR REPLACE FUNCTION fn_doctor_fee_history() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.fee = OLD.fee THEN
+    RETURN NEW;
+  END IF;
+  UPDATE doctor_fee_history SET valid_to = NOW()
+   WHERE doctor_id = NEW.id AND valid_to IS NULL AND fee <> NEW.fee;
+  INSERT INTO doctor_fee_history (doctor_id, fee) VALUES (NEW.id, NEW.fee)
+  ON CONFLICT (doctor_id, fee) DO UPDATE SET valid_to = NULL;
+  RETURN NEW;
+END $$;
+CREATE OR REPLACE TRIGGER trg_doctor_fee_history AFTER INSERT OR UPDATE OF fee ON doctors
+  FOR EACH ROW EXECUTE FUNCTION fn_doctor_fee_history();
+
+DO $$
+BEGIN
+  -- ① 已有数据进历史表：挂号单用过的价格（已失效），再登记医生现行价格
+  INSERT INTO doctor_fee_history (doctor_id, fee, valid_from, valid_to)
+  SELECT a.doctor_id, a.fee, MIN(a.created_at), NOW() FROM appointments a
+   GROUP BY a.doctor_id, a.fee
+  ON CONFLICT (doctor_id, fee) DO NOTHING;
+  INSERT INTO doctor_fee_history (doctor_id, fee, valid_from)
+  SELECT d.id, d.fee, d.created_at FROM doctors d
+  ON CONFLICT (doctor_id, fee) DO UPDATE SET valid_to = NULL;
+
+  -- ② 挂号单的价格外键改指向价目历史表
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_appt_doctor_fee'
+                AND confrelid = 'public.doctors'::regclass) THEN
+    ALTER TABLE appointments DROP CONSTRAINT fk_appt_doctor_fee;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_appt_doctor_fee') THEN
+    ALTER TABLE appointments ADD CONSTRAINT fk_appt_doctor_fee FOREIGN KEY (doctor_id, fee)
+      REFERENCES doctor_fee_history (doctor_id, fee);
+  END IF;
+
+  -- ③ 旧的价格档位换成新规则，并按新标准调价（触发器自动记历史）
+  ALTER TABLE doctors DROP CONSTRAINT IF EXISTS ck_doctor_fee_tier;
+  ALTER TABLE doctors DROP CONSTRAINT IF EXISTS uq_doctor_id_fee;
+  UPDATE doctors SET fee = public.fn_doctor_fee(title, dept_id)
+   WHERE fee <> public.fn_doctor_fee(title, dept_id);
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_doctor_fee_rule') THEN
+    ALTER TABLE doctors ADD CONSTRAINT ck_doctor_fee_rule CHECK (fee = public.fn_doctor_fee(title, dept_id));
+  END IF;
+END $$;

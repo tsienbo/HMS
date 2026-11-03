@@ -3,6 +3,9 @@
  * ============================================================ */
 
 * { box-sizing: border-box; }
+/* 任何内容都不能把页面横向撑宽：手机浏览器遇到超宽内容会把整页的布局宽度撑大再缩小显示，
+ * 底部固定的导航就会被挤到屏幕外面。clip 不会产生滚动容器，不影响顶栏的 sticky */
+html, body { overflow-x: clip; max-width: 100%; }
 
 /* 隐藏整页滚动条（仍可用滚轮 / 触摸滑动）；表格等内部横向滚动条不受影响 */
 html { scrollbar-width: none; }
@@ -13,8 +16,8 @@ body {
   font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
   font-size: 16px;
   line-height: 1.7;
-  color: #1f2937;
-  background: #f8fafc;
+  color: #1c1c1c;
+  background: #f6f1e8;
 }
 
 h1 { font-size: 26px; margin: 0 0 8px; }
@@ -32,7 +35,7 @@ p  { margin: 8px 0; }
 /* ---------- 顶栏 ---------- */
 .topbar {
   background: #fff;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e7dfd2;
   position: sticky;
   top: 0;
   z-index: 30;
@@ -47,7 +50,7 @@ p  { margin: 8px 0; }
 .logo {
   font-size: 18px;
   font-weight: bold;
-  color: #2563eb;
+  color: #1f5e55;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -67,18 +70,21 @@ p  { margin: 8px 0; }
   min-height: 60px;
   padding: 6px 12px;
   border-radius: 10px;
-  color: #4b5563;
+  color: #534c42;
   cursor: pointer;
   font-size: 15px;
   white-space: nowrap;
 }
-.nav a::before { content: attr(data-icon); font-size: 24px; line-height: 1; }
-.nav a:hover { background: #f3f6fb; color: #2563eb; }
-.nav a.on {
-  color: #2563eb;
-  background: #eef3ff;
-  font-weight: bold;
+/* 导航图标：单色线条，没选中是灰色描边；当前页变蓝，并给主体加一层浅蓝填充 */
+.nav a span { display: block; max-width: 100%; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; }
+.nav a .ni {
+  width: 26px; height: 26px; flex: 0 0 auto;
+  fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
 }
+.nav a.on .ni .nf { fill: currentColor; fill-opacity: .14; }
+.nav a { color: #6b6459; }
+.nav a:hover { color: #1f5e55; }
+.nav a.on { color: #1f5e55; font-weight: 600; }
 .login-info {
   margin-left: auto;
   display: flex;
@@ -104,8 +110,8 @@ p  { margin: 8px 0; }
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0;
     background: #fff;
-    border-top: 1px solid #e5e7eb;
-    box-shadow: 0 -2px 8px rgba(15, 23, 42, .06);
+    border-top: 1px solid #e7dfd2;
+    box-shadow: 0 -2px 8px rgba(60, 45, 25, .06);
     padding-bottom: env(safe-area-inset-bottom);   /* 全面屏手机底部横条留空 */
   }
   .nav a {
@@ -115,29 +121,28 @@ p  { margin: 8px 0; }
     padding: 8px 0;
     border-radius: 0;
     font-size: 15px;
-    font-weight: 600;
-    border-top: 3px solid transparent;
-    white-space: normal;                          /* 外文标签太长时折成两行，不截断 */
+    font-weight: 500;
     text-align: center;
     line-height: 1.15;
+    overflow: hidden;                             /* 外文标签太长时由 fitLabels() 缩字号，不拆单词 */
   }
-  .nav a::before { font-size: 28px; }
+  .nav a .ni { width: 28px; height: 28px; }
   .nav a:hover { background: none; }
-  .nav a.on { border-top-color: #2563eb; background: none; }
+  .nav a.on { background: none; }
   /* 给底部导航让出位置，页面最后一行不被挡住 */
   .main { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
 }
 
 /* ---------- 小字提示 ---------- */
-.tip { color: #6b7280; font-size: 14px; }
-.tip b, .tip strong { color: #374151; }
+.tip { color: #6b6459; font-size: 14px; }
+.tip b, .tip strong { color: #3a342c; }
 
 /* ---------- 按钮 ---------- */
 .btn {
   font-family: inherit;
   font-size: 15px;
   background: #fff;
-  border: 1px solid #c4c9d0;
+  border: 1px solid #cfc5b4;
   border-radius: 8px;
   padding: 10px 18px;
   cursor: pointer;
@@ -147,15 +152,15 @@ p  { margin: 8px 0; }
   justify-content: center;
   line-height: 1.3;
 }
-.btn:hover { border-color: #2563eb; color: #2563eb; }
+.btn:hover { border-color: #1f5e55; color: #1f5e55; }
 .btn.primary {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: #1f5e55;
+  border-color: #1f5e55;
   color: #fff;
 }
-.btn.primary:hover { background: #1d4fd7; color: #fff; }
+.btn.primary:hover { background: #174a43; color: #fff; }
 /* 选中态要和悬停态区分开：悬停只变边框和字色，选中再加浅底和加粗 */
-.btn.on { border-color: #2563eb; color: #2563eb; background: #eef3ff; font-weight: 600; }
+.btn.on { border-color: #1f5e55; color: #1f5e55; background: #eaf2ee; font-weight: 600; }
 .btn.small { padding: 6px 12px; font-size: 14px; min-height: 36px; }
 .btn.huge { padding: 16px 36px; font-size: 20px; border-radius: 10px; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
@@ -186,13 +191,13 @@ p  { margin: 8px 0; }
 }
 .card {
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e7dfd2;
   border-radius: 8px;
   padding: 16px;
 }
 .card[onclick] { cursor: pointer; }
-.card[onclick]:hover { border-color: #2563eb; }
-.card.disabled { color: #aaa; background: #fafafa; }
+.card[onclick]:hover { border-color: #1f5e55; }
+.card.disabled { color: #ada290; background: #f3ede2; }
 
 .card-title {
   font-size: 16px;
@@ -205,15 +210,15 @@ p  { margin: 8px 0; }
   display: inline-block;
   font-size: 12px;
   font-weight: normal;
-  color: #666;
-  background: #f0f2f5;
+  color: #6b6459;
+  background: #efe8dc;
   border-radius: 4px;
   padding: 2px 8px;
   margin-left: 4px;
 }
 .tag.green { color: #0a7a3d; background: #e6f5ec; }
 .tag.warn { color: #8a5a00; background: #fdf1d8; }
-.tag.blue { color: #1d4fd7; background: #e8efff; }
+.tag.blue { color: #174a43; background: #e3eee9; }
 
 /* ---------- 日期按钮那一排 ---------- */
 .dates {
@@ -229,7 +234,7 @@ p  { margin: 8px 0; }
 }
 .date {
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e7dfd2;
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 14px;
@@ -240,11 +245,11 @@ p  { margin: 8px 0; }
   min-width: 64px;
   flex-shrink: 0;
 }
-.date span { display: block; color: #888; font-size: 12px; }
-.date.on { border-color: #2563eb; color: #2563eb; background: #eef3ff; }
-.date.on span { color: #2563eb; }
-.date.off { color: #bbb; background: #fafafa; cursor: not-allowed; }
-.date.off span { color: #ccc; }
+.date span { display: block; color: #7d7569; font-size: 12px; }
+.date.on { border-color: #1f5e55; color: #1f5e55; background: #eaf2ee; }
+.date.on span { color: #1f5e55; }
+.date.off { color: #bdb2a1; background: #f3ede2; cursor: not-allowed; }
+.date.off span { color: #cfc5b4; }
 
 /* ---------- 确认页的两栏 ---------- */
 .two-col {
@@ -259,31 +264,31 @@ p  { margin: 8px 0; }
 
 .box {
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e7dfd2;
   border-radius: 8px;
   padding: 16px;
 }
 .box.narrow { max-width: 420px; }
 .box p { display: flex; align-items: center; gap: 8px; }
-.box label { width: 80px; flex-shrink: 0; color: #4b5563; font-size: 14px; }
+.box label { width: 8em; flex-shrink: 0; color: #534c42; font-size: 14px; }
 
 /* ---------- 表单控件 ---------- */
 input, select, textarea {
   font-family: inherit;
   font-size: 16px;
   padding: 8px 10px;
-  border: 1px solid #c4c9d0;
+  border: 1px solid #cfc5b4;
   border-radius: 6px;
   background: #fff;
   min-height: 44px;
 }
-input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: #1f5e55; box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
 input[type="number"] { width: 72px; text-align: center; }
 .box input[type="text"], .box input[type="password"] { flex: 1; min-width: 0; }
 
 /* 确认页就诊人表单独样式（和 .box 内表单保持一致） */
 #patientForm p { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
-#patientForm label { width: 80px; flex-shrink: 0; color: #4b5563; font-size: 14px; text-align: right; }
+#patientForm label { width: 8em; flex-shrink: 0; color: #534c42; font-size: 14px; text-align: right; }
 #patientForm input[type="text"] { flex: 1; min-width: 0; }
 
 /* ---------- 筛选条 ---------- */
@@ -308,16 +313,16 @@ table.data {
   width: 100%;
   border-collapse: collapse;
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e7dfd2;
 }
 table.data th, table.data td {
-  border-bottom: 1px solid #e6e8eb;
+  border-bottom: 1px solid #e7dfd2;
   padding: 10px 10px;
   text-align: left;
   font-size: 14px;
   vertical-align: top;
 }
-table.data th { background: #f0f2f5; font-weight: bold; white-space: nowrap; }
+table.data th { background: #efe8dc; font-weight: bold; white-space: nowrap; }
 table.data tr:last-child td { border-bottom: none; }
 
 /* 窄屏：表格改成「一条记录一张卡片」，每项一行「字段名  内容」。
@@ -329,7 +334,7 @@ table.data tr:last-child td { border-bottom: none; }
   table.data { border: none; background: transparent; }
   table.data tr {
     background: #fff;
-    border: 1px solid #e5e7eb;
+    border: 1px solid #e7dfd2;
     border-radius: 8px;
     padding: 8px 12px;
     margin-bottom: 10px;
@@ -338,7 +343,7 @@ table.data tr:last-child td { border-bottom: none; }
    * 不会像 flex 那样把每一段挤成一列 */
   table.data td {
     position: relative;
-    border-bottom: 1px dashed #eef0f3;
+    border-bottom: 1px dashed #ece4d7;
     padding: 7px 0 7px 84px;
     min-height: 34px;
     word-break: break-word;
@@ -350,7 +355,7 @@ table.data tr:last-child td { border-bottom: none; }
     left: 0;
     top: 7px;
     width: 76px;
-    color: #6b7280;
+    color: #6b6459;
   }
   table.data td[colspan] { padding-left: 0; }
   table.data td[colspan]::before { content: none; }
@@ -366,34 +371,43 @@ table.data tr:last-child td { border-bottom: none; }
 /* ---------- 首页 ---------- */
 .hero {
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e7dfd2;
   border-radius: 12px;
   padding: 28px 20px;
   text-align: center;
   margin-bottom: 16px;
 }
-.hero h1 { font-size: 28px; color: #1e40af; }
+.hero h1 { font-size: 28px; color: #174a43; }
 
 /* 首页下方：常用科室 + 就诊须知 */
 .home-sec { margin-bottom: 16px; border-radius: 12px; }
 .dept-quick { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; margin-top: 6px; }
 .dq {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 12px 4px; border: 1px solid #e5e7eb; border-radius: 10px;
-  background: #f8fafc; color: #1f2937; font: inherit; cursor: pointer;
-  min-width: 0; text-align: center; line-height: 1.25; word-break: break-word;
+  padding: 12px 4px; border: 1px solid #e7dfd2; border-radius: 10px;
+  background: #f6f1e8; color: #1c1c1c; font: inherit; cursor: pointer;
+  min-width: 0; text-align: center; line-height: 1.25; word-break: keep-all; overflow-wrap: normal; overflow: hidden;
 }
 .dq span { font-size: 28px; line-height: 1; }
-.dq:hover { border-color: #2563eb; background: #eef3ff; }
+.dq:hover { border-color: #1f5e55; background: #eaf2ee; }
 .notes { list-style: none; margin: 4px 0 0; padding: 0; }
-.notes li { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px dashed #eef0f3; color: #374151; }
+.notes li { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px dashed #ece4d7; color: #3a342c; }
 .notes li:last-child { border-bottom: none; }
 .notes li span { flex: 0 0 auto; }
 .notes li em { font-style: normal; }
-@media (max-width: 900px) { .dept-quick { grid-template-columns: repeat(4, 1fr); } }
-.hero .sub { color: #475569; font-size: 19px; margin-bottom: 18px; }
+@media (max-width: 900px) { .dept-quick { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 480px) {
+  .dept-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dq { flex-direction: row; justify-content: flex-start; text-align: left; gap: 10px; padding: 10px 12px; }
+  .dq span { font-size: 24px; }
+}
+/* 再窄（≤380px）：图标回到文字上方，文字用满整格宽（左边放了图标，Ophthalmology 这类长词就放不下） */
+@media (max-width: 380px) {
+  .dq { flex-direction: column; justify-content: center; text-align: center; gap: 4px; padding: 10px 6px; }
+}
+.hero .sub { color: #534c42; font-size: 19px; margin-bottom: 18px; }
 /* 给老年人看的提示：字号不小于正文，颜色加深，灰字看不清 */
-.hero .assist { margin-top: 12px; color: #334155; font-size: 19px; line-height: 1.7; }
+.hero .assist { margin-top: 12px; color: #3a342c; font-size: 19px; line-height: 1.7; }
 body.big .hero .sub { font-size: 21px; }
 body.big .hero .assist { font-size: 22px; }
 /* 电话预约：手机上点一下直接进拨号界面（tel: 链接） */
@@ -438,7 +452,8 @@ body.big .hero .assist { font-size: 22px; }
 /* 表单行里的下拉框、电话号码框与输入框一样撑满剩余宽度，不再顶出右边 */
 .box p > select, .modal p > select, #patientForm p > select,
 .box p > input[type="tel"], .modal p > input[type="tel"], #patientForm p > input[type="tel"] { flex: 1; min-width: 0; max-width: 100%; }
-.box label, .modal label, #patientForm label { overflow-wrap: anywhere; }
+/* 标签只在空格处换行，不拆单词（外文标签在 8em 宽里放不下时折到第二行） */
+.box label, .modal label, #patientForm label { word-break: keep-all; overflow-wrap: normal; }
 
 /* 手机：标签放到输入框上方（外文标签较长，放左边会被挤成两三行） */
 @media (max-width: 700px) {
@@ -449,18 +464,18 @@ body.big .hero .assist { font-size: 22px; }
   .phone-row select { width: 8.5em; }
   /* 顶栏：语言下拉与按钮占位后，站名过长时省略号截断 */
   .topbar .wrap { flex-wrap: nowrap; }          /* 导航已固定在底部，顶栏只剩一行 */
-  .logo { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; }
+  .logo { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; word-break: keep-all; line-height: 1.2; }   /* 站名放不下时 fitLabels() 先缩字号，再在空格处折行 */
   .login-info { flex: 0 1 auto; }
   .lang-sel { max-width: 6.8em; font-size: 13px; padding: 4px 4px; }
   #fontToggle { font-size: 13px; padding: 4px 8px; }
 }
 /* 搜索结果里「医生」「科室」两段的小标题，同样占满一整行 */
-.grid-head { grid-column: 1 / -1; margin: 6px 0 0; font-size: 16px; color: #374151; }
+.grid-head { grid-column: 1 / -1; margin: 6px 0 0; font-size: 16px; color: #3a342c; }
 
 .tabs.center-tabs, #mineTabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #mineTabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }   /* 待就诊 / 已完成 / 已取消 / 候补 */
 /* 个人中心两排页签：字号跟标准按钮一样大；外文太长时折成两行而不是被截断 */
-.center-tabs .btn, #mineTabs .btn { font-size: 20px; padding: 14px 6px; line-height: 1.25; white-space: normal; word-break: break-word; }
+.center-tabs .btn, #mineTabs .btn { font-size: 20px; padding: 14px 6px; line-height: 1.25; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; min-width: 0; overflow: hidden; }
 body.big .center-tabs .btn, body.big #mineTabs .btn { font-size: 22px; padding: 16px 6px; }
 
 @media (max-width: 700px) {
@@ -490,35 +505,35 @@ body.big .center-tabs .btn, body.big #mineTabs .btn { font-size: 22px; padding: 
   text-align: center;
   padding: 10px 6px;
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e7dfd2;
   border-radius: 8px;
   font-size: 14px;
-  color: #9ca3af;
+  color: #a59a88;
 }
 .progress-bar .step span {
   display: inline-block;
   width: 24px; height: 24px; line-height: 24px;
   border-radius: 50%;
-  background: #e5e7eb;
-  color: #6b7280;
+  background: #e7dfd2;
+  color: #6b6459;
   font-size: 13px;
   margin-right: 6px;
 }
 .progress-bar .step.on {
-  border-color: #2563eb;
-  color: #2563eb;
-  background: #eef3ff;
+  border-color: #1f5e55;
+  color: #1f5e55;
+  background: #eaf2ee;
   font-weight: bold;
 }
-.progress-bar .step.on span { background: #2563eb; color: #fff; }
+.progress-bar .step.on span { background: #1f5e55; color: #fff; }
 /* 已完成的步骤：可点回去修改 */
-.progress-bar .step.done { color: #2563eb; cursor: pointer; }
-.progress-bar .step.done span { background: #dbeafe; color: #2563eb; }
-.progress-bar .step.done:hover { border-color: #2563eb; background: #f5f8ff; }
+.progress-bar .step.done { color: #1f5e55; cursor: pointer; }
+.progress-bar .step.done span { background: #d6e6df; color: #1f5e55; }
+.progress-bar .step.done:hover { border-color: #1f5e55; background: #f1f6f3; }
 
 /* 手机：四个步骤并排时每格只有八十多像素，「选医生与日期」会被拆成两半。
  * 改成「数字在上、文字在下」，文字缩小一号且不换行 */
-@media (max-width: 560px) {
+@media (max-width: 700px) {
   .progress-bar { gap: 6px; }
   .progress-bar .step {
     padding: 8px 2px;
@@ -530,6 +545,11 @@ body.big .center-tabs .btn, body.big #mineTabs .btn { font-size: 22px; padding: 
     gap: 4px;
   }
   .progress-bar .step span { margin-right: 0; }
+  /* 四个步骤的文字（尤其外文）挤在一行放不下：只给当前步骤显示文字，其他步骤只留数字圆点 */
+  .progress-bar .step { flex: 0 0 52px; min-width: 0; }
+  .progress-bar .step.on { flex: 1 1 auto; }
+  .progress-bar .step:not(.on) em { display: none; }
+  .progress-bar .step em { max-width: 100%; overflow: hidden; }
 }
 
 .form-error { color: #dc2626; font-size: 14px; min-height: 1em; margin: 6px 0; }
@@ -547,12 +567,12 @@ body.big .center-tabs .btn, body.big #mineTabs .btn { font-size: 22px; padding: 
 }
 .badge.green { color: #0a7a3d; background: #e6f5ec; }
 .badge.orange { color: #92400e; background: #fef3c7; }
-.badge.grey { color: #4b5563; background: #e5e7eb; }
+.badge.grey { color: #534c42; background: #e7dfd2; }
 
 /* ---------- 医生卡片（新） ---------- */
 .doc-card {
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e7dfd2;
   border-radius: 10px;
   padding: 16px;
   display: flex;
@@ -562,12 +582,12 @@ body.big .center-tabs .btn, body.big #mineTabs .btn { font-size: 22px; padding: 
   cursor: pointer;
   transition: border-color .15s, box-shadow .15s;
 }
-.doc-card:hover { border-color: #93b4f5; box-shadow: 0 2px 8px rgba(37, 99, 235, .08); }
+.doc-card:hover { border-color: #9dc0b4; box-shadow: 0 2px 8px rgba(37, 99, 235, .08); }
 .doc-card .avatar {
   width: 48px; height: 48px;
   border-radius: 50%;
-  background: #dbeafe;
-  color: #1e40af;
+  background: #d6e6df;
+  color: #174a43;
   display: flex; align-items: center; justify-content: center;
   font-size: 18px; font-weight: bold;
   flex-shrink: 0;
@@ -576,7 +596,7 @@ body.big .center-tabs .btn, body.big #mineTabs .btn { font-size: 22px; padding: 
  * 手机上右边的价格、下午时段被截掉。加上后日期栏在卡片内部横向滑动 */
 .doc-card .info { flex: 1; min-width: 0; }
 .doc-card .name { font-size: 16px; font-weight: bold; }
-.doc-card .meta { color: #6b7280; font-size: 14px; margin: 4px 0; }
+.doc-card .meta { color: #6b6459; font-size: 14px; margin: 4px 0; }
 .doc-card .actions { margin-top: 8px; }
 
 /* ---------- 标签页 ---------- */
@@ -585,28 +605,28 @@ body.big .center-tabs .btn, body.big #mineTabs .btn { font-size: 22px; padding: 
 /* ---------- 成功页 ---------- */
 .success-box {
   background: #fff;
-  border: 2px solid #2563eb;
+  border: 2px solid #1f5e55;
   border-radius: 12px;
   padding: 24px 20px;
   text-align: center;
 }
 .success-box .big-check { font-size: 48px; color: #0a7a3d; margin-bottom: 8px; }
-.success-box h2 { color: #1e40af; }
+.success-box h2 { color: #174a43; }
 .success-box .detail {
   text-align: left;
-  background: #f8fafc;
+  background: #f6f1e8;
   border-radius: 8px;
   padding: 16px;
   margin: 16px 0;
   font-size: 15px;
 }
 .success-box .detail p { margin: 6px 0; }
-.success-box .detail b { color: #1e40af; }
+.success-box .detail b { color: #174a43; }
 
 /* ---------- 预约卡片 ---------- */
 .appt-card {
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e7dfd2;
   border-radius: 10px;
   padding: 16px;
   margin-bottom: 12px;
@@ -616,7 +636,7 @@ body.big .center-tabs .btn, body.big #mineTabs .btn { font-size: 22px; padding: 
   flex-wrap: wrap;
 }
 .appt-card .title { font-size: 16px; font-weight: bold; }
-.appt-card .meta { color: #6b7280; font-size: 14px; margin-top: 6px; }
+.appt-card .meta { color: #6b6459; font-size: 14px; margin-top: 6px; }
 .appt-card .actions { margin-top: 12px; }
 
 /* ---------- 搜索高亮 ---------- */
@@ -636,13 +656,13 @@ body.big .center-tabs .btn, body.big #mineTabs .btn { font-size: 22px; padding: 
 }
 .patient-chip {
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e7dfd2;
   border-radius: 20px;
   padding: 8px 14px;
   cursor: pointer;
   font-size: 14px;
 }
-.patient-chip.on { border-color: #2563eb; background: #eef3ff; color: #2563eb; font-weight: bold; }
+.patient-chip.on { border-color: #1f5e55; background: #eaf2ee; color: #1f5e55; font-weight: bold; }
 
 /* ---------- 弹窗 ---------- */
 .modal-mask {
@@ -668,7 +688,7 @@ body.big .center-tabs .btn, body.big #mineTabs .btn { font-size: 22px; padding: 
 .modal h3 { font-size: 23px; margin-bottom: 10px; }   /* 弹窗标题跟着标准字号的 h3 走 */
 body.big .modal h3 { font-size: 25px; }
 .modal p { display: flex; align-items: center; gap: 8px; }
-.modal label { width: 72px; flex-shrink: 0; color: #4b5563; }
+.modal label { width: 8em; flex-shrink: 0; color: #534c42; }
 .modal input[type="text"] { flex: 1; min-width: 0; }
 
 .captcha-q {
@@ -676,8 +696,8 @@ body.big .modal h3 { font-size: 25px; }
   font-weight: bold;
   letter-spacing: 2px;
   text-align: center;
-  background: #f5f6f8;
-  border: 1px dashed #c4c9d0;
+  background: #f3ede2;
+  border: 1px dashed #cfc5b4;
   border-radius: 6px;
   padding: 14px;
   margin: 12px 0;
@@ -714,7 +734,7 @@ body table.data th, body table.data td { font-size: 18px; padding: 13px 11px; }
 body .date { font-size: 18px; padding: 12px 16px; }
 body .logo { font-size: 22px; }
 body .nav a { font-size: 19px; }
-body .nav a::before { font-size: 30px; }
+body .nav a .ni { width: 28px; height: 28px; }
 body .captcha-q { font-size: 36px; }
 body .progress-bar .step { font-size: 18px; }
 body .badge { font-size: 17px; }
@@ -724,7 +744,7 @@ body .appt-card .title { font-size: 21px; }
 body .appt-card .meta { font-size: 18px; }
 @media (max-width: 700px) {
   body .nav a { font-size: 18px; min-height: 88px; }
-  body .nav a::before { font-size: 34px; }
+  body .nav a .ni { width: 30px; height: 30px; }
   body .main { padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
   body .logo { font-size: 18px; }
   body h1 { font-size: 30px; }   /* 首页标题在手机上保持一行 */
@@ -754,7 +774,7 @@ body.big table.data th, body.big table.data td { font-size: 20px; padding: 14px 
 body.big .date { font-size: 20px; padding: 13px 18px; }
 body.big .logo { font-size: 24px; }
 body.big .nav a { font-size: 21px; }
-body.big .nav a::before { font-size: 33px; }
+body.big .nav a .ni { width: 30px; height: 30px; }
 body.big .captcha-q { font-size: 40px; }
 body.big .progress-bar .step { font-size: 20px; }
 body.big .badge { font-size: 19px; }
@@ -764,7 +784,7 @@ body.big .appt-card .title { font-size: 23px; }
 body.big .appt-card .meta { font-size: 20px; }
 @media (max-width: 700px) {
   body.big .nav a { font-size: 18px; min-height: 94px; }   /* 每格只有 1/4 屏宽，俄语 «Персонал» 一个词，再大放不下 */
-  body.big .nav a::before { font-size: 36px; }
+  body.big .nav a .ni { width: 33px; height: 33px; }
   body.big .main { padding-bottom: calc(130px + env(safe-area-inset-bottom)); }
   body.big .logo { font-size: 17px; }   /* 顶栏按钮变成「标准字号」四个字，医院名让一点 */
   body.big h1 { font-size: 32px; }   /* 首页标题在手机上保持一行 */
@@ -778,7 +798,7 @@ body.big .appt-card .meta { font-size: 20px; }
 .remember-row input[type="checkbox"] { width: 22px; height: 22px; flex: 0 0 auto; }
 
 /* 医院自助机提示 / 后台本机模式 */
-.kiosk-note { margin: 12px 0 4px; padding: 10px 12px; border-radius: 8px; background: #eff6ff; color: #1e3a8a; font-weight: 600; }
+.kiosk-note { margin: 12px 0 4px; padding: 10px 12px; border-radius: 8px; background: #eaf2ee; color: #123a35; font-weight: 600; }
 .kiosk-setting { margin: 4px 0 8px; }
 
 /* ---------- 可搜索下拉框（enhanceSelect） ---------- */
@@ -786,7 +806,7 @@ body.big .appt-card .meta { font-size: 20px; }
 .ss-wrap > select.searchable { display: none; }
 .ss-input {
   width: 100%; cursor: pointer; padding-right: 32px;
-  background-image: linear-gradient(45deg, transparent 50%, #6b7280 50%), linear-gradient(135deg, #6b7280 50%, transparent 50%);
+  background-image: linear-gradient(45deg, transparent 50%, #6b6459 50%), linear-gradient(135deg, #6b6459 50%, transparent 50%);
   background-position: calc(100% - 18px) 50%, calc(100% - 12px) 50%;
   background-size: 6px 6px; background-repeat: no-repeat;
 }
@@ -794,13 +814,13 @@ body.big .appt-card .meta { font-size: 20px; }
 .ss-list {
   display: none; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 60;
   max-height: 300px; overflow-y: auto; background: #fff;
-  border: 1px solid #c4c9d0; border-radius: 8px; box-shadow: 0 8px 24px rgba(15, 23, 42, .15);
+  border: 1px solid #cfc5b4; border-radius: 8px; box-shadow: 0 8px 24px rgba(60, 45, 25, .15);
 }
 .ss-wrap.open .ss-list { display: block; }
 .ss-opt { padding: 10px 14px; cursor: pointer; line-height: 1.35; }
-.ss-opt:hover, .ss-opt.active { background: #eef3ff; color: #1d4ed8; }
+.ss-opt:hover, .ss-opt.active { background: #eaf2ee; color: #174a43; }
 .ss-opt.sel { font-weight: 700; }
-.ss-empty { padding: 10px 14px; color: #6b7280; }
+.ss-empty { padding: 10px 14px; color: #6b6459; }
 /* 放在原来 select 的位置上，占位规则照搬 select 的 */
 .box p > .ss-wrap, .modal p > .ss-wrap, #patientForm p > .ss-wrap { flex: 1; max-width: 100%; }
 .phone-row .ss-wrap { flex: 0 0 auto; width: 9.5em; }
@@ -810,4 +830,158 @@ body.big .appt-card .meta { font-size: 20px; }
   .phone-row .ss-wrap { width: 8.5em; }
   .filters .ss-wrap { flex: 1 1 calc(50% - 4px); min-width: 0; }
   .ss-list { max-height: 45vh; }
+}
+
+/* 页脚：开源致谢 */
+.site-footer { margin: 28px 0 8px; text-align: center; font-size: 15px; }
+.site-footer a { color: #6b6459; text-decoration: underline; }
+.site-footer a:hover { color: #1f5e55; }
+.credits { list-style: none; padding: 0; margin: 8px 0; }
+.credits li { padding: 10px 0; border-bottom: 1px dashed #e7dfd2; line-height: 1.6; }
+.credits li:last-child { border-bottom: none; }
+.credits a { color: #174a43; }
+
+/* 怎么走：楼层示意图 + 分步指引 */
+.route-where { margin: 0 0 8px; color: #123a35; }
+.route-map { display: block; width: 100%; max-width: 420px; height: auto; margin: 6px auto 12px; }
+.route-steps { list-style: none; margin: 0; padding: 0; }
+.route-steps li { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #f6f1e8; border: 1px solid #e7dfd2; border-radius: 10px; }
+.route-steps li.rs-arrow { background: none; border: none; justify-content: center; padding: 0; color: #1f5e55; font-size: 22px; font-weight: 700; line-height: 1.2; }
+.route-steps .rs-ic { font-size: 26px; flex: 0 0 auto; }
+.route-steps .rs-tx { flex: 1; min-width: 0; }
+
+/* 窄屏：个人中心三个页签图标在上、文字在下（文字能用满整格宽）；待就诊 / 已完成 / 已取消 / 候补 排成 2×2 */
+@media (max-width: 420px) {
+  .center-tabs .btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+  #mineTabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* 按钮文字默认一行放完，放不下时由 fitLabels() 缩字号（不再出现「カレンダーに / 追加」这种断法） */
+.btn { white-space: nowrap; max-width: 100%; }
+
+/* ============================================================
+ * v4 温和医疗风：暖米白底、墨绿一个主色、标题用宋体衬线、线条图标、少边框多留白
+ * 颜色集中在这里；上面各处的蓝灰色已统一替换成同一套暖色
+ * ============================================================ */
+:root {
+  --bg: #f6f1e8; --paper: #fffdf8; --ink: #1c1c1c; --muted: #6b6459; --line: #e7dfd2;
+  --accent: #1f5e55; --accent-2: #174a43; --accent-soft: #eaf2ee; --warm: #b4583f;
+  --serif: "Noto Serif SC", "Noto Serif", "Songti SC", "STSong", "SimSun", Georgia, serif;
+}
+body { background: var(--bg); color: var(--ink); }
+h1, h2, .card-title, .hero-title { font-family: var(--serif); font-weight: 700; letter-spacing: .01em; }
+/* 泰文没有对应的衬线字体，回退成无衬线，免得一行里中泰混排两种风格 */
+html:lang(th) h1, html:lang(th) h2, html:lang(th) .card-title, html:lang(th) .hero-title { font-family: inherit; }
+
+/* 线条图标：颜色跟着文字走 */
+.ic { width: 1.15em; height: 1.15em; flex: 0 0 auto; vertical-align: -.2em;
+  fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* 顶栏：和页面同色、半透明，去掉生硬的白条 */
+/* 不能用 backdrop-filter：它会让顶栏变成 position: fixed 的参照物，手机底部导航就被吸到顶栏下面 */
+.topbar { background: var(--bg); border-bottom: 1px solid var(--line); }
+.logo { color: var(--ink); font-family: var(--serif); display: inline-flex; align-items: center; gap: 8px; }
+.logo .ic { width: 1.4em; height: 1.4em; color: var(--accent); stroke-width: 1.9; }
+.nav a { color: var(--muted); }
+.nav a:hover, .nav a.on { color: var(--accent); }
+@media (max-width: 700px) { .nav { background: var(--paper); } }
+
+/* 卡片、按钮、输入框：统一的暖白、圆角 */
+.card { background: var(--paper); border-color: var(--line); border-radius: 14px; }
+.btn { border-radius: 999px; background: var(--paper); border-color: #cfc5b4; color: var(--ink); }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: var(--accent-2); color: #fff; }
+.btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.btn .ic { margin-right: 6px; }
+input, select, textarea { border-radius: 10px; background: var(--paper); }
+input:focus, select:focus, textarea:focus { outline: 2px solid rgba(31, 94, 85, .35); outline-offset: 1px; border-color: var(--accent); }
+
+/* ---------- 首页 ---------- */
+.hero {
+  background: none; border: none; border-radius: 0; text-align: left;
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 56px; align-items: center;
+  padding: 40px 0 36px; margin-bottom: 8px;
+}
+.hero-eyebrow { margin: 0 0 16px; font-size: 14px; font-weight: 600; letter-spacing: .2em; color: var(--warm); }
+.hero .hero-title { margin: 0 0 20px; font-size: 54px; line-height: 1.18; color: var(--ink); }
+.hero-title em { display: block; font-style: normal; color: var(--accent); }
+.hero .sub { margin: 0; max-width: 30em; font-size: 20px; line-height: 1.75; color: var(--muted); }
+.hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin: 28px 0 0; }
+.btn.call { background: transparent; border: 1.5px solid var(--ink); color: var(--ink); border-radius: 999px; }
+.btn.call:hover { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.hero .assist { margin: 14px 0 0; font-size: 17px; color: var(--muted); }
+.hero-meta { list-style: none; margin: 22px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 26px; font-size: 15px; color: var(--muted); }
+.hero-meta li { display: flex; align-items: center; gap: 8px; }
+.hero-meta li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--warm); flex: 0 0 auto; }
+.hero-art { position: relative; margin: 0; aspect-ratio: 4 / 5; border-radius: 6px; overflow: hidden;
+  box-shadow: 0 20px 40px -24px rgba(60, 45, 25, .45); }
+.hero-art svg { display: block; width: 100%; height: 100%; }
+.hero-art figcaption { position: absolute; left: 18px; right: 18px; bottom: 14px; color: #fff;
+  font-family: var(--serif); font-style: italic; font-size: 15px; letter-spacing: .02em; text-shadow: 0 1px 2px rgba(0, 0, 0, .25); }
+
+.home-sec { background: none; border: none; border-top: 1px solid var(--line); border-radius: 0; padding: 30px 0 8px; margin-bottom: 0; }
+.home-sec .card-title { font-size: 28px; margin-bottom: 18px; }
+.dq { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 18px 6px 14px; gap: 8px; color: var(--ink); }
+.dq span { display: inline-flex; line-height: 0; }
+.dq .ic { width: 32px; height: 32px; color: var(--accent); stroke-width: 1.6; }
+.dq:hover { border-color: var(--accent); background: var(--accent-soft); }
+.notes li { align-items: flex-start; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); color: var(--ink); }
+.notes li span { display: inline-flex; padding-top: .2em; color: var(--accent); }
+.notes li .ic { width: 22px; height: 22px; }
+
+body .hero .sub { font-size: 20px; }
+body .hero .assist { font-size: 17px; }
+body.big .hero-title { font-size: 60px; }
+body.big .hero .sub { font-size: 23px; }
+body.big .hero .assist { font-size: 20px; }
+body.big .hero-meta { font-size: 18px; }
+body.big .dq .ic { width: 36px; height: 36px; }
+
+@media (max-width: 860px) {
+  .hero { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 22px 0 26px; }
+  .hero-art { display: none; }                    /* 窄屏只留文字和按钮，插画占地方 */
+  .hero .hero-title { font-size: 38px; }
+  body.big .hero-title { font-size: 42px; }
+}
+@media (max-width: 480px) {
+  .hero .hero-title { font-size: 32px; }
+  body.big .hero-title { font-size: 34px; }
+  .hero .sub, body .hero .sub { font-size: 18px; }
+  body.big .hero .sub { font-size: 20px; }
+  .hero-actions .btn { width: 100%; }
+  .hero-actions .btn.call, body .hero-actions .btn.call, body.big .hero-actions .btn.call { padding-left: 10px; padding-right: 10px; }
+  .home-sec .card-title { font-size: 24px; }
+  .dq { padding: 12px; }
+  .dq .ic { width: 26px; height: 26px; }
+}
+
+/* 预约成功的大对勾、路线步骤图标 */
+.success-box .big-check { line-height: 0; color: var(--accent); }
+.success-box .big-check .ic { width: 56px; height: 56px; stroke-width: 1.6; }
+.route-steps .rs-ic { display: inline-flex; color: var(--accent); }
+.route-steps .rs-ic .ic { width: 26px; height: 26px; }
+.kiosk-note .ic, .staff-bar .ic { margin-right: 4px; }
+
+/* 顶栏右侧三个控件（语言 / 大字版 / 管理员已登录）统一成同一种胶囊：同高、同字号、同边框；
+ * 顶栏控件不跟着大字版放大（大字版开关本身就在这里，放大后顶栏挤不下） */
+body .topbar .login-info .btn, body .topbar .login-info .lang-sel {
+  height: 40px; min-height: 40px; padding: 0 16px; border-radius: 999px;
+  border: 1px solid #cfc5b4; background-color: var(--paper); color: var(--ink);
+  font-size: 15px; font-weight: 500; line-height: 1; max-width: none; font-family: inherit;
+}
+/* 顶栏比正文版心宽一些：俄语、大字版时「站名 + 4 个导航 + 3 个控件」在宽屏上也能放在一行 */
+body .topbar .wrap { max-width: 1360px; }
+body .topbar .login-info .lang-sel {
+  appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 34px; width: auto;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b6459' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center; background-size: 14px;
+}
+body .topbar .login-info .btn:hover, body .topbar .login-info .lang-sel:hover { border-color: var(--accent); color: var(--accent); }
+body .topbar .login-info .btn.on { background-color: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+body .topbar .login-info .btn.staff-on { background-color: var(--accent-soft); border-color: #9dc0b4; color: var(--accent); gap: 6px; }
+body .topbar .login-info .btn.staff-on .ic { margin: 0; }
+.staff-bar.on { background: var(--accent-soft); color: var(--accent); border-color: var(--line); }
+@media (max-width: 700px) {
+  body .topbar .login-info .btn, body .topbar .login-info .lang-sel { height: 34px; min-height: 34px; font-size: 13px; padding: 0 10px; }
+  body .topbar .login-info .lang-sel { padding-right: 26px; background-position: right 8px center; background-size: 12px; max-width: 7.5em; }
 }

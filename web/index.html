@@ -5,7 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>智慧医院预约挂号系统</title>
 <!-- 内联一个空图标：不写这一行浏览器会去请求 /favicon.ico，控制台永远挂一条 404 -->
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🏥</text></svg>" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231f5e55' stroke-width='2.2' stroke-linecap='round'><rect x='3.5' y='3.5' width='17' height='17' rx='5' fill='%23eaf2ee'/><path d='M12 8v8M8 12h8'/></svg>" />
+<!-- 标题用的宋体衬线（思源宋体），只取 600 / 700 两种字重；断网时回退到系统宋体 -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<!-- media="print" 再切回 all：字体表异步加载，不阻塞页面脚本（国内访问 Google Fonts 可能很慢或打不开，打不开就用系统宋体） -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700&display=swap" media="print" onload="this.media='all'" />
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -13,13 +18,13 @@
 <!-- ==================== 顶栏 ==================== -->
 <div class="topbar">
   <div class="wrap">
-    <span class="logo" onclick="goHome()">🏥 <span data-i18n="brand">智慧医院挂号平台</span></span>
+    <span class="logo" onclick="goHome()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><path d="M12 8v8M8 12h8"/></svg><span data-i18n="brand">智慧医院挂号平台</span></span>
     <span class="nav" id="topNav">
-      <!-- data-icon 只在手机底部导航里显示（见 style.css） -->
-      <a id="navHome" data-icon="🏠" onclick="goHome()" data-i18n="nav_home">首页</a>
-      <a id="navBooking" data-icon="📝" onclick="startBooking()" data-i18n="nav_booking">挂号</a>
-      <a id="navCenter" data-icon="👤" onclick="showPage('mine')" data-i18n="nav_center">个人中心</a>
-      <a id="navAdmin" data-icon="🛠️" onclick="goAdmin()" data-i18n="nav_admin">后台管理</a>
+      <!-- 线条图标（SVG，颜色跟着文字走）；文字放在 span 里，切语言时 applyI18n 只换文字不动图标 -->
+      <a id="navHome" onclick="goHome()"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path class="nf" d="M3.5 10.2 12 3.5l8.5 6.7V19a1.5 1.5 0 0 1-1.5 1.5h-4.2v-5.8H9.2v5.8H5A1.5 1.5 0 0 1 3.5 19z"/></svg><span data-i18n="nav_home">首页</span></a>
+      <a id="navBooking" onclick="startBooking()"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect class="nf" x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17M12 12.8v5M9.5 15.3h5"/></svg><span data-i18n="nav_booking">挂号</span></a>
+      <a id="navCenter" onclick="showPage('mine')"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle class="nf" cx="12" cy="8" r="4"/><path class="nf" d="M4.5 20.5c.6-4 3.7-6.5 7.5-6.5s6.9 2.5 7.5 6.5z"/></svg><span data-i18n="nav_center">个人中心</span></a>
+      <a id="navAdmin" onclick="goAdmin()"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path class="nf" d="M12 3.2 19.5 6v5.6c0 4.4-3.1 8-7.5 9.2-4.4-1.2-7.5-4.8-7.5-9.2V6z"/><path d="m8.8 12 2.3 2.3 4.3-4.6"/></svg><span data-i18n="nav_admin">后台管理</span></a>
     </span>
     <span class="login-info">
       <!-- 语言：选项由 buildLangSelect() 按 i18n.js 的 LANGS 生成 -->
@@ -39,13 +44,52 @@
   <!-- ==================== 首页 ==================== -->
   <div id="page-home">
     <div class="hero">
-      <h1>🏥 <span data-i18n="brand">智慧医院挂号平台</span></h1>
-      <p class="sub" data-i18n="hospital_sub">三级甲等 · 市第一人民医院</p>
-      <button class="btn huge primary" onclick="startBooking()" data-i18n="book_now">立即挂号</button>
-      <div class="call-line">
-        <a class="btn call" href="tel:+8657188880120">📞 <span data-i18n="call_book">电话预约</span>&nbsp;0571-8888 0120</a>
+      <div class="hero-text">
+        <p class="hero-eyebrow" data-i18n="hospital_sub">三级甲等 · 市第一人民医院</p>
+        <h1 class="hero-title"><span data-i18n="hero_t1">看病，</span><em data-i18n="hero_t2">从挂对号开始。</em></h1>
+        <p class="sub" data-i18n="hero_sub">输入症状就能找到科室，余号实时可见，号满可以排候补。</p>
+        <div class="hero-actions">
+          <button class="btn huge primary" onclick="startBooking()" data-i18n="book_now">立即挂号</button>
+          <a class="btn call" href="tel:+8657188880120"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.2 4h3.3l1.6 4-2.1 1.4a11 11 0 0 0 6.6 6.6l1.4-2.1 4 1.6v3.3a1.6 1.6 0 0 1-1.7 1.6C10.6 19.9 4.1 13.4 3.6 5.7A1.6 1.6 0 0 1 5.2 4z"/></svg><span data-i18n="call_book">电话预约</span>&nbsp;0571-8888 0120</a>
+        </div>
+        <p class="tip assist" data-i18n="call_tip">不会操作智能手机？点上方按钮直接拨打，由工作人员代约，或让子女帮忙操作。</p>
+        <ul class="hero-meta">
+          <li data-i18n="hero_m1">六种证件均可挂号</li>
+          <li data-i18n="hero_m2">号满可排候补</li>
+          <li data-i18n="hero_m3">门诊 8:00–17:00</li>
+        </ul>
       </div>
-      <p class="tip assist" data-i18n="call_tip">不会操作智能手机？点上方按钮直接拨打，由工作人员代约，或让子女帮忙操作。</p>
+      <!-- 插画：纯 SVG 平面画，不依赖图片文件 -->
+      <figure class="hero-art">
+      <svg viewBox="0 0 400 500" preserveAspectRatio="xMidYMid slice" role="img" aria-label="">
+        <defs>
+          <linearGradient id="hSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfdcd4"/><stop offset=".62" stop-color="#efe6d6"/></linearGradient>
+          <linearGradient id="hShade" x1="0" y1="0" x2="0" y2="1"><stop offset=".6" stop-color="#1c3b35" stop-opacity="0"/><stop offset="1" stop-color="#1c3b35" stop-opacity=".55"/></linearGradient>
+        </defs>
+        <rect width="400" height="500" fill="url(#hSky)"/>
+        <circle cx="302" cy="112" r="40" fill="#f6ead2"/>
+        <path d="M0 300 C70 262 140 270 210 286 S330 262 400 276 V500 H0z" fill="#b9cdbf"/>
+        <path d="M0 352 C90 330 170 336 250 346 S360 336 400 340 V500 H0z" fill="#93b2a2"/>
+        <rect x="96" y="226" width="200" height="132" fill="#f8f2e7"/>
+        <rect x="96" y="216" width="200" height="12" fill="#1f5e55"/>
+        <rect x="58" y="270" width="52" height="88" fill="#efe5d4"/>
+        <rect x="282" y="254" width="62" height="104" fill="#efe5d4"/>
+        <g fill="#b7c9c0">
+          <rect x="114" y="244" width="22" height="18" rx="2"/><rect x="146" y="244" width="22" height="18" rx="2"/><rect x="224" y="244" width="22" height="18" rx="2"/><rect x="256" y="244" width="22" height="18" rx="2"/>
+          <rect x="114" y="276" width="22" height="18" rx="2"/><rect x="146" y="276" width="22" height="18" rx="2"/><rect x="224" y="276" width="22" height="18" rx="2"/><rect x="256" y="276" width="22" height="18" rx="2"/>
+          <rect x="68" y="288" width="14" height="14" rx="2"/><rect x="88" y="288" width="14" height="14" rx="2"/><rect x="294" y="272" width="16" height="16" rx="2"/><rect x="318" y="272" width="16" height="16" rx="2"/>
+          <rect x="294" y="300" width="16" height="16" rx="2"/><rect x="318" y="300" width="16" height="16" rx="2"/>
+        </g>
+        <rect x="180" y="236" width="32" height="32" rx="6" fill="#fffdf8"/>
+        <path d="M196 243v18M187 252h18" stroke="#b4583f" stroke-width="5" stroke-linecap="round"/>
+        <rect x="180" y="314" width="32" height="44" rx="3" fill="#1f5e55"/>
+        <path d="M150 358 C170 400 150 450 120 500 H230 C220 450 214 400 214 358z" fill="#e9dfcc"/>
+        <g fill="#5f8a77"><ellipse cx="40" cy="330" rx="18" ry="30"/><ellipse cx="368" cy="320" rx="16" ry="28"/><ellipse cx="72" cy="350" rx="14" ry="24"/></g>
+        <g stroke="#4c6d5f" stroke-width="3"><path d="M40 352v24M368 340v24M72 368v20"/></g>
+        <rect width="400" height="500" fill="url(#hShade)"/>
+      </svg>
+        <figcaption data-i18n="hero_cap">门诊楼，清晨七点半</figcaption>
+      </figure>
     </div>
     <!-- 常用科室：点一下直接进该科室选医生；按钮由 renderHome() 按当前语言画 -->
     <div class="card home-sec">
@@ -55,11 +99,11 @@
     <div class="card home-sec">
       <div class="card-title" data-i18n="notes_h">就诊须知</div>
       <ul class="notes">
-        <li><span>🕗</span><em data-i18n="n_hours">门诊时间：上午 8:00–12:00，下午 13:30–17:00</em></li>
-        <li><span>🪪</span><em data-i18n="n_doc">就诊当天请携带挂号时填写的证件（身份证、护照等）</em></li>
-        <li><span>📅</span><em data-i18n="n_limit">同一就诊人同一天最多预约 2 个号</em></li>
-        <li><span>⏳</span><em data-i18n="n_wait">号满可排候补，有人退号会通知你，号源为你保留 2 小时</em></li>
-        <li><span>⚠️</span><em data-i18n="n_cancel">不能就诊请提前取消；30 天内取消 5 次或 180 天内爽约 3 次，将暂停线上挂号</em></li>
+        <li><span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span><em data-i18n="n_hours">门诊时间：上午 8:00–12:00，下午 13:30–17:00</em></li>
+        <li><span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2"/><circle cx="8.5" cy="11" r="2"/><path d="M5.8 16c.5-1.5 1.5-2.2 2.7-2.2s2.2.7 2.7 2.2M14 10h4M14 13.5h3"/></svg></span><em data-i18n="n_doc">就诊当天请携带挂号时填写的证件（身份证、护照等）</em></li>
+        <li><span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg></span><em data-i18n="n_limit">同一就诊人同一天最多预约 2 个号</em></li>
+        <li><span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11M6.5 20.5h11M8 3.5c0 4.5 4 5.5 4 8.5s-4 4-4 8.5M16 3.5c0 4.5-4 5.5-4 8.5s4 4 4 8.5"/></svg></span><em data-i18n="n_wait">号满可排候补，有人退号会通知你，号源为你保留 2 小时</em></li>
+        <li><span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 21 19.5H3z"/><path d="M12 10v4.5M12 17.2h.01"/></svg></span><em data-i18n="n_cancel">不能就诊请提前取消；30 天内取消 5 次或 180 天内爽约 3 次，将暂停线上挂号</em></li>
       </ul>
     </div>
   </div>
@@ -79,9 +123,9 @@
   <div id="centerHead" style="display:none">
     <h2 data-i18n="center_h">个人中心</h2>
     <div class="tabs center-tabs">
-      <button class="btn" id="ctMine" onclick="showPage('mine')">📋 <span data-i18n="sc_mine_t">我的预约</span></button>
-      <button class="btn" id="ctReminders" onclick="showPage('reminders')">🔔 <span data-i18n="sc_rem_t">就诊提醒</span></button>
-      <button class="btn" id="ctProfile" onclick="showPage('profile')">👤 <span data-i18n="sc_prof_t">我的资料</span></button>
+      <button class="btn" id="ctMine" onclick="showPage('mine')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="3.5" width="15" height="17" rx="2"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/></svg><span data-i18n="sc_mine_t">我的预约</span></button>
+      <button class="btn" id="ctReminders" onclick="showPage('reminders')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><span data-i18n="sc_rem_t">就诊提醒</span></button>
+      <button class="btn" id="ctProfile" onclick="showPage('profile')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c.6-4 3.7-6.5 7.5-6.5s6.9 2.5 7.5 6.5"/></svg><span data-i18n="sc_prof_t">我的资料</span></button>
     </div>
   </div>
 
@@ -299,6 +343,20 @@
     </div>
   </div>
 
+  <!-- 页脚：开源致谢（所有页面都在） -->
+  <footer class="site-footer">
+    <a href="javascript:void(0)" onclick="openCredits()" data-i18n="credits">开源致谢</a>
+  </footer>
+
+</div>
+
+<!-- ==================== 弹窗：开源致谢 ==================== -->
+<div class="modal-mask" id="creditsMask" style="display:none" onclick="if (event.target === this) closeCredits()">
+  <div class="modal wide">
+    <h3 data-i18n="credits">开源致谢</h3>
+    <div id="creditsBody"></div>
+    <div class="actions"><button class="btn primary" onclick="closeCredits()" data-i18n="close">关闭</button></div>
+  </div>
 </div>
 
 <!-- ==================== 弹窗：验证码 ==================== -->
@@ -373,6 +431,23 @@
     <div class="actions">
       <button class="btn" onclick="closePatientDetail()">关闭</button>
     </div>
+  </div>
+</div>
+
+<!-- ==================== 弹窗：怎么走（楼层示意图 + 分步指引） ==================== -->
+<div class="modal-mask" id="routeMask" style="display:none" onclick="if (event.target === this) closeRoute()">
+  <div class="modal">
+    <h3 data-i18n="rt_h">怎么走</h3>
+    <div id="routeBody"></div>
+    <div class="actions"><button class="btn primary" onclick="closeRoute()" data-i18n="close">关闭</button></div>
+  </div>
+</div>
+
+<!-- ==================== 弹窗：预约凭证（我的预约 → 查看凭证） ==================== -->
+<div class="modal-mask" id="voucherMask" style="display:none" onclick="if (event.target === this) closeVoucher()">
+  <div class="modal wide">
+    <h3 data-i18n="voucher_h">预约凭证</h3>
+    <div id="voucherBody"></div>
   </div>
 </div>
 

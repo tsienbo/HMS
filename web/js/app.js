@@ -42,20 +42,48 @@ const HOSPITAL = {
 
 /* 科室图标。图标只是「怎么画」，数据库里没有这一列，
  * 按科室编号在这里取，换一套图标不用动数据库。 */
+/* 线条图标（24×24，描边随文字颜色）。替代原来的 emoji：emoji 各平台画风不一，彩色也显得杂乱 */
+const ICONS = {
+  logo: '<rect x="3.5" y="3.5" width="17" height="17" rx="5"/><path d="M12 8v8M8 12h8"/>',
+  heart: '<path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z"/><path d="M6.5 12.5h3l1.3-2.3 1.9 4.4 1.3-2.1h3.5"/>',
+  bandage: '<rect x="2.6" y="8.4" width="18.8" height="7.2" rx="3.6" transform="rotate(-45 12 12)"/><path d="M10.6 10.6h.01M13.4 13.4h.01M10.6 13.4h.01M13.4 10.6h.01"/>',
+  child: '<circle cx="12" cy="8" r="4"/><path d="M5.5 20.5c.5-3.8 3.1-6.2 6.5-6.2s6 2.4 6.5 6.2"/><path d="M10.5 8.3h.01M13.5 8.3h.01"/>',
+  bone: '<path d="M17 10c.7-.7 1.7 0 2.5 0a2.5 2.5 0 1 0 0-5 .5.5 0 0 1-.5-.5 2.5 2.5 0 1 0-5 0c0 .8.7 1.8 0 2.5l-7 7c-.7.7-1.7 0-2.5 0a2.5 2.5 0 0 0 0 5c.3 0 .5.2.5.5a2.5 2.5 0 1 0 5 0c0-.8-.7-1.8 0-2.5z"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+  female: '<circle cx="12" cy="9" r="5"/><path d="M12 14v7M9 18h6"/>',
+  male: '<circle cx="10" cy="14" r="5"/><path d="M13.6 10.4 19.5 4.5M15 4.5h4.5V9"/>',
+  drop: '<path d="M12 3.5s-6 6.6-6 10.6a6 6 0 0 0 12 0c0-4-6-10.6-6-10.6z"/><path d="M9.4 14.6a2.6 2.6 0 0 0 2.6 2.6"/>',
+  ear: '<path d="M7 9.5a5 5 0 0 1 10 0c0 3-2.4 4-3 6.5-.5 2-1.8 3.5-3.7 3.5A3.3 3.3 0 0 1 7 16.2"/><path d="M10 10a2 2 0 0 1 4 0c0 1.5-1.6 2-1.6 3.6"/>',
+  tooth: '<path d="M7.5 3.5c-2.7 0-4.2 2.1-3.7 5 .4 2.4 1.3 3.5 1.8 6.1.6 3 1.2 5.9 2.7 5.9s1.7-4 3.7-4 2.2 4 3.7 4 2.1-2.9 2.7-5.9c.5-2.6 1.4-3.7 1.8-6.1.5-2.9-1-5-3.7-5-1.9 0-2.8 1-4.5 1s-2.6-1-4.5-1z"/>',
+  leaf: '<path d="M5 19c0-8.5 5.2-13.5 14.5-14.5C19.5 13.8 14.5 19 5 19z"/><path d="M5 19l8.2-8.2"/>',
+  brain: '<path d="M12 5.5a3 3 0 0 0-5.5-.7 3 3 0 0 0-2.3 4.6 3.2 3.2 0 0 0 .5 5.5A3 3 0 0 0 9 18.4a3 3 0 0 0 3 1.6zM12 5.5a3 3 0 0 1 5.5-.7 3 3 0 0 1 2.3 4.6 3.2 3.2 0 0 1-.5 5.5 3 3 0 0 1-4.3 3.5 3 3 0 0 1-3 1.6"/>',
+  ribbon: '<path d="M12 3.5A3.5 3.5 0 0 0 8.5 7c0 2.3 2 4.8 3.5 6.8 1.5-2 3.5-4.5 3.5-6.8A3.5 3.5 0 0 0 12 3.5z"/><path d="M10.2 11.6 6 20l3-1 1.6 2.5 2.9-6M13.8 11.6 18 20l-3-1-1.6 2.5"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  idcard: '<rect x="3" y="5.5" width="18" height="13" rx="2"/><circle cx="8.5" cy="11" r="2"/><path d="M5.8 16c.5-1.5 1.5-2.2 2.7-2.2s2.2.7 2.7 2.2M14 10h4M14 13.5h3"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/>',
+  hourglass: '<path d="M6.5 3.5h11M6.5 20.5h11M8 3.5c0 4.5 4 5.5 4 8.5s-4 4-4 8.5M16 3.5c0 4.5-4 5.5-4 8.5s4 4 4 8.5"/>',
+  alert: '<path d="M12 4 21 19.5H3z"/><path d="M12 10v4.5M12 17.2h.01"/>',
+  pin: '<path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
+  phone: '<path d="M5.2 4h3.3l1.6 4-2.1 1.4a11 11 0 0 0 6.6 6.6l1.4-2.1 4 1.6v3.3a1.6 1.6 0 0 1-1.7 1.6C10.6 19.9 4.1 13.4 3.6 5.7A1.6 1.6 0 0 1 5.2 4z"/>',
+  check: '<circle cx="12" cy="12" r="8.5"/><path d="m8.2 12.3 2.6 2.6 5-5.3"/>',
+  list: '<rect x="4.5" y="3.5" width="15" height="17" rx="2"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>',
+  bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c.6-4 3.7-6.5 7.5-6.5s6.9 2.5 7.5 6.5"/>',
+  door: '<path d="M6 20.5v-16a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v16M3.5 20.5h17"/><path d="M14.5 12.5h.01"/>',
+  lift: '<rect x="5" y="3.5" width="14" height="17" rx="1.5"/><path d="M9.5 9.5 12 7l2.5 2.5M9.5 14.5 12 17l2.5-2.5"/>',
+  steth: '<path d="M6 3.5v5a4 4 0 0 0 8 0v-5"/><path d="M10 12.5V15a4.5 4.5 0 0 0 9 0v-2"/><circle cx="19" cy="11" r="2"/>',
+  arrow: '<path d="M4.5 12h14M13 6.5l5.5 5.5-5.5 5.5"/>',
+  sign: '<path d="M12 3v18M6 6.5h11l2 2-2 2H6zM18 13.5H7l-2 2 2 2h11"/>',
+  route: '<circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/>',
+};
+function icon(name, cls) {
+  return '<svg class="ic' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[name] || ICONS.logo) + '</svg>';
+}
+
 const DEPT_ICONS = {
-  D01: '🫀',
-  D02: '🩹',
-  D03: '🧒',
-  D04: '🦴',
-  D05: '👁️',
-  D06: '🤰',
-  D07: '🧴',
-  D08: '👂',
-  D09: '🦷',
-  D10: '🌿',
-  D11: '🧠',
-  D12: '🎗️',
-  D13: '🚹',
+  D01: 'heart', D02: 'bandage', D03: 'child', D04: 'bone', D05: 'eye', D06: 'female', D07: 'drop',
+  D08: 'ear', D09: 'tooth', D10: 'leaf', D11: 'brain', D12: 'ribbon', D13: 'male',
 };
 
 /* 医生擅长方向。本系统没有「按擅长方向搜索」的功能，
@@ -162,8 +190,7 @@ let adminSchedules = [];   // 当前这一天的排班（停诊时按编号找�
 
 /* 取科室图标，没有就给药箱 */
 function deptIcon(id) {
-  if (DEPT_ICONS[id]) return DEPT_ICONS[id];
-  return '🏥';
+  return icon(DEPT_ICONS[id] || 'logo');
 }
 
 /* 取医生简介，没有就返回空字符串 */
@@ -315,7 +342,7 @@ function setRemember(on) {
   });
 }
 function rememberHtml() {
-  if (isKiosk()) return '<p class="kiosk-note">🏥 ' + escapeHtml(t('kiosk_note')) + '</p>';
+  if (isKiosk()) return '<p class="kiosk-note">' + icon('logo') + escapeHtml(t('kiosk_note')) + '</p>';
   return '<p class="remember-row"><label><input type="checkbox" id="rememberMe"' + (rememberOn() ? ' checked' : '')
     + ' onchange="setRemember(this.checked)" /> ' + escapeHtml(t('remember_me')) + '</label>'
     + '<span class="tip">' + escapeHtml(t('remember_tip')) + '</span></p>';
@@ -962,7 +989,7 @@ function phoneFieldHtml(prefix, v) {
   const cc = v.phoneCc || '86';
   return '<p><label for="' + prefix + 'Phone">' + t('phone') + '</label><span class="phone-row">'
        + '<select class="searchable" id="' + prefix + 'PhoneCc" aria-label="' + escapeHtml(t('phone_cc')) + '" onchange="onPhoneCcChange(\'' + prefix + '\')">' + phoneCcOptions(cc) + '</select>'
-       + '<input id="' + prefix + 'Phone" type="tel" maxlength="11" placeholder="' + escapeHtml(t(cc === '86' ? 'phone_ph_cn' : 'phone_ph_intl')) + '" value="' + escapeHtml(v.phone || '') + '" />'
+       + '<input id="' + prefix + 'Phone" type="tel" maxlength="20" inputmode="tel" autocomplete="tel-national" placeholder="' + escapeHtml(t(cc === '86' ? 'phone_ph_cn' : 'phone_ph_intl')) + '" value="' + escapeHtml(v.phone || '') + '" />'
        + '</span></p>';
 }
 
@@ -1003,13 +1030,28 @@ function readDoc(prefix) {
   return { ok: true, idType: type, nationality: nat, idCard: no, docKey: docKeyOf(type, nat, no), sex: sex };
 }
 
+/* 各国 / 地区手机号（不含区号、不含国内长途前缀 0）的格式，和后端 validators.py 的 PHONE_RULES 是同一张表；
+   表里没有的区号退回到 4–11 位数字 */
+const PHONE_RULES = {'1': /^(?:[2-9]\d{2}[2-9]\d{6})$/, '7': /^(?:[79]\d{9})$/, '20': /^(?:1[0125]\d{8})$/, '27': /^(?:[6-8]\d{8})$/, '30': /^(?:69\d{8})$/, '31': /^(?:6\d{8})$/, '32': /^(?:4\d{8})$/, '33': /^(?:[67]\d{8})$/, '34': /^(?:[67]\d{8})$/, '39': /^(?:3\d{8,9})$/, '41': /^(?:7[5-9]\d{7})$/, '43': /^(?:6\d{8,10})$/, '44': /^(?:7\d{9})$/, '45': /^(?:[2-9]\d{7})$/, '46': /^(?:7\d{8})$/, '47': /^(?:[49]\d{7})$/, '48': /^(?:[4-8]\d{8})$/, '49': /^(?:1[5-7]\d{8,9})$/, '51': /^(?:9\d{8})$/, '52': /^(?:\d{10})$/, '53': /^(?:5\d{7})$/, '54': /^(?:9?\d{10})$/, '55': /^(?:[1-9]{2}9\d{8})$/, '56': /^(?:9\d{8})$/, '57': /^(?:3\d{9})$/, '58': /^(?:4\d{9})$/, '60': /^(?:1\d{8,9})$/, '61': /^(?:4\d{8})$/, '62': /^(?:8\d{8,10})$/, '63': /^(?:9\d{9})$/, '64': /^(?:2\d{7,9})$/, '65': /^(?:[89]\d{7})$/, '66': /^(?:[689]\d{8})$/, '81': /^(?:[789]0\d{8})$/, '82': /^(?:1[016-9]\d{7,8})$/, '84': /^(?:[35789]\d{8})$/, '86': /^(?:1[3-9]\d{9})$/, '90': /^(?:5\d{9})$/, '91': /^(?:[6-9]\d{9})$/, '92': /^(?:3\d{9})$/, '93': /^(?:7\d{8})$/, '94': /^(?:7\d{8})$/, '95': /^(?:9\d{7,9})$/, '98': /^(?:9\d{9})$/, '212': /^(?:[67]\d{8})$/, '213': /^(?:[567]\d{8})$/, '216': /^(?:[2-9]\d{7})$/, '233': /^(?:[235]\d{8})$/, '234': /^(?:[789][01]\d{8})$/, '237': /^(?:6\d{8})$/, '243': /^(?:[89]\d{8})$/, '244': /^(?:9\d{8})$/, '249': /^(?:9\d{8})$/, '250': /^(?:7\d{8})$/, '251': /^(?:[79]\d{8})$/, '254': /^(?:[17]\d{8})$/, '255': /^(?:[67]\d{8})$/, '256': /^(?:7\d{8})$/, '258': /^(?:8\d{8})$/, '260': /^(?:[79]\d{8})$/, '263': /^(?:7\d{8})$/, '351': /^(?:9\d{8})$/, '353': /^(?:8\d{8})$/, '358': /^(?:[45]\d{6,9})$/, '375': /^(?:[234]\d{8})$/, '380': /^(?:[3-9]\d{8})$/, '420': /^(?:[67]\d{8})$/, '852': /^(?:[4-9]\d{7})$/, '853': /^(?:6\d{7})$/, '855': /^(?:[1-9]\d{7,8})$/, '856': /^(?:20\d{8})$/, '880': /^(?:1\d{9})$/, '886': /^(?:9\d{8})$/, '964': /^(?:7\d{9})$/, '966': /^(?:5\d{8})$/, '971': /^(?:5\d{8})$/, '976': /^(?:[5-9]\d{7})$/, '977': /^(?:9\d{9})$/, '992': /^(?:\d{9})$/, '993': /^(?:6\d{7})$/, '996': /^(?:[2-9]\d{8})$/, '998': /^(?:\d{9})$/};
+
+/* 去掉空格、横线、点、括号；去掉顺手输入的 +区号 / 00区号；去掉国内拨号习惯的开头 0（英国 07…、日本 090…） */
+function normalizePhone(raw, cc) {
+  let v = String(raw || '').replace(/[\s\-.()（）]/g, '');
+  ['+' + cc, '00' + cc].some(function (pre) {
+    if (v.indexOf(pre) === 0 && v.length > pre.length + 3) { v = v.slice(pre.length); return true; }
+    return false;
+  });
+  const rule = PHONE_RULES[cc] || /^\d{4,11}$/;
+  if (!rule.test(v) && v[0] === '0' && rule.test(v.slice(1))) v = v.slice(1);
+  return v;
+}
+
 function readPhone(prefix) {
   const cc = document.getElementById(prefix + 'PhoneCc').value;
-  const phone = document.getElementById(prefix + 'Phone').value.replace(/[\s-]/g, '');
-  if (!phone) return { ok: false, msg: t('v_phone_empty') };
-  if (cc === '86' ? !/^1[3-9]\d{9}$/.test(phone) : !/^\d{4,11}$/.test(phone)) {
-    return { ok: false, msg: t(cc === '86' ? 'v_phone_cn' : 'v_phone_intl') };
-  }
+  const input = document.getElementById(prefix + 'Phone');
+  if (!input.value.trim()) return { ok: false, msg: t('v_phone_empty') };
+  const phone = normalizePhone(input.value, cc);
+  if (!(PHONE_RULES[cc] || /^\d{4,11}$/).test(phone)) return { ok: false, msg: t('v_phone_bad') };
   return { ok: true, phoneCc: cc, phone: phone };
 }
 
@@ -1096,7 +1138,7 @@ function renderHome() {
     if (!d) continue;
     html += '<button class="dq" onclick="startBookingWithDept(\'' + d.id + '\', \'\')"><span>' + deptIcon(d.id) + '</span>' + escapeHtml(trDeptName(d)) + '</button>';
   }
-  html += '<button class="dq" onclick="startBooking(true)"><span>🔍</span>' + escapeHtml(t('all_depts')) + '</button>';
+  html += '<button class="dq" onclick="startBooking(true)"><span>' + icon('search') + '</span>' + escapeHtml(t('all_depts')) + '</button>';
   box.innerHTML = html;
 }
 
@@ -1166,69 +1208,94 @@ function maskPhone(s) {
 
 /* ---------- 我的资料 ----------
  * 上半部分填证件（类型 / 国籍 / 号码）加载档案，下半部分改姓名、手机号、邮箱。 */
+/* ---------- 我的资料 ----------
+ * 一步到位：本机已经核对过这位就诊人（有凭证），直接显示可编辑的资料；
+ * 没核对过（或凭证过期），资料页本身就是核对表单 —— 填一次姓名和证件，通过后当场显示资料。
+ * 以前要先选证件点「加载」，再在弹窗里把姓名和证件重填一遍，同样的信息填两次。 */
 function renderProfile() {
   const sess = loadSession();
-  const box = document.getElementById('profileBox');
-  box.innerHTML = '<div class="box narrow">'
-    + docFieldsHtml('pl', sess, false)
-    + '<div class="actions"><button class="btn" onclick="loadProfile()">' + t('load') + '</button></div>'
-    + '<p class="tip" id="profileTip"></p>'
-    + '<div id="profileForm" style="display:none">'
-    + '<p><label for="pNameEdit">' + t('name') + '</label><input id="pNameEdit" type="text" maxlength="50" /></p>'
-    + '<p><label for="pIdCardEdit">' + t('id_no') + '</label><input id="pIdCardEdit" type="text" readonly style="background:#f3f4f6;color:#6b7280" /></p>'
-    + phoneFieldHtml('pe', {})
-    + '<p><label for="pEmailEdit">' + t('email') + '</label><input id="pEmailEdit" type="text" maxlength="120" placeholder="' + escapeHtml(t('email_ph')) + '" /></p>'
-    + '<div class="actions"><button class="btn primary" onclick="saveProfile()">' + t('save') + '</button>'
-    + '<button class="btn" onclick="clearLocalPatient()">' + t('switch_patient') + '</button>'
-    + '<span class="tip" id="profileSaveTip"></span></div>'
-    + rememberHtml()
-    + '</div></div>';
-  if (sessKey(sess)) loadProfile();
-  else document.getElementById('profileTip').textContent = t('prof_need');
+  const key = sessKey(sess);
+  if (key && loadPatientTokens()[key]) loadProfile();
+  else renderProfileVerify(sess);
+}
+function renderProfileVerify(prefill, msg) {
+  prefill = prefill || {};
+  document.getElementById('profileBox').innerHTML = '<div class="box narrow">'
+    + '<p class="tip">' + escapeHtml(t('prof_verify_tip')) + '</p>'
+    + '<p><label for="pvName">' + t('name') + '</label><input id="pvName" type="text" maxlength="50" autocomplete="name" placeholder="' + escapeHtml(t('name_ph')) + '" value="' + escapeHtml(prefill.name || '') + '" /></p>'
+    + docFieldsHtml('pv', prefill, false)
+    + '<p class="form-error" id="pvErr" role="alert">' + escapeHtml(msg || '') + '</p>'
+    + '<div class="actions"><button class="btn primary" id="pvBtn" onclick="verifyProfile()">' + t('verify_load') + '</button></div>'
+    + '</div>';
+}
+async function verifyProfile() {
+  const err = document.getElementById('pvErr');
+  err.textContent = '';
+  const nm = readName('pvName');
+  if (!nm.ok) { err.textContent = nm.msg; return; }
+  const doc = readDoc('pv');
+  if (!doc.ok) { err.textContent = doc.msg; return; }
+  const btn = document.getElementById('pvBtn');
+  btn.disabled = true;
+  try {
+    const r = await request('POST', '/patient-auth/realname',
+      { name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard }, true);
+    savePatientToken(doc.docKey, r.patientToken);
+    saveSession({ name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard, docKey: doc.docKey });
+    await loadProfile();
+  } catch (e) {
+    err.textContent = trError(e.message) || t('fail');
+    btn.disabled = false;
+  }
 }
 async function loadProfile() {
-  const tip = document.getElementById('profileTip');
-  const form = document.getElementById('profileForm');
-  const doc = readDoc('pl');
-  if (!doc.ok) { tip.textContent = doc.msg; form.style.display = 'none'; return; }
-  tip.textContent = t('loading');
+  const box = document.getElementById('profileBox');
+  const sess = loadSession();
+  box.innerHTML = '<div class="box narrow"><p class="tip">' + t('loading') + '</p></div>';
+  let p;
   try {
-    const p = await apiPatientMine(doc.docKey);
-    document.getElementById('pNameEdit').value = p.name || '';
-    document.getElementById('pIdCardEdit').value = t('idt_' + (p.idType || doc.idType)) + ' · ' + (p.idCard || maskDoc(doc.idCard));
-    document.getElementById('pePhoneCc').innerHTML = phoneCcOptions(p.phoneCc || '86');
-    document.getElementById('pePhone').value = '';
-    document.getElementById('pePhone').placeholder = p.phone || '';
-    document.getElementById('pEmailEdit').value = p.email || '';
-    form.style.display = '';
-    tip.textContent = '';
+    /* 最后一个参数 true：凭证失效时不弹全局的核对窗，而是把这一页换成核对表单 */
+    p = await request('GET', '/patients/mine?idCard=' + encodeURIComponent(sessKey(sess)), null, true);
   } catch (e) {
-    tip.textContent = e.status === 404 ? t('prof_notfound') : e.message;
-    form.style.display = 'none';
+    if (e.code === 'PATIENT_AUTH_REQUIRED' || e.status === 401) return renderProfileVerify(sess);
+    return renderProfileVerify(sess, e.status === 404 ? t('prof_notfound') : (trError(e.message) || t('fail')));
   }
+  box.innerHTML = '<div class="box narrow">'
+    + '<p><label for="pNameEdit">' + t('name') + '</label><input id="pNameEdit" type="text" maxlength="50" value="' + escapeHtml(p.name || '') + '" /></p>'
+    + '<p><label for="pIdCardEdit">' + t('id_no') + '</label><input id="pIdCardEdit" type="text" readonly style="background:#efe8dc;color:#6b6459" value="'
+    + escapeHtml(t('idt_' + p.idType) + ' · ' + (p.idCard || '')) + '" /></p>'
+    + phoneFieldHtml('pe', { phoneCc: p.phoneCc || '86' })
+    + '<p class="tip">' + escapeHtml(t('phone_keep', { p: (p.phoneCc && p.phoneCc !== '86' ? '+' + p.phoneCc + ' ' : '') + (p.phone || '') })) + '</p>'
+    + '<p><label for="pEmailEdit">' + t('email') + '</label><input id="pEmailEdit" type="text" maxlength="120" placeholder="' + escapeHtml(t('email_ph')) + '" value="' + escapeHtml(p.email || '') + '" /></p>'
+    + '<div class="actions"><button class="btn primary" onclick="saveProfile()">' + t('save') + '</button>'
+    + '<button class="btn" onclick="clearLocalPatient()">' + t('switch_patient') + '</button></div>'
+    + '<p class="tip" id="profileSaveTip"></p>'
+    + rememberHtml()
+    + '</div>';
 }
 async function saveProfile() {
   const tip = document.getElementById('profileSaveTip');
-  const doc = readDoc('pl');
-  if (!doc.ok) { tip.textContent = doc.msg; return; }
+  const sess = loadSession();
   const nm = readName('pNameEdit');
   if (!nm.ok) { tip.textContent = nm.msg; return; }
-  /* 手机号框留空表示不改：占位文字是打码后的原号码 */
-  const phoneBox = document.getElementById('pePhone');
-  if (!phoneBox.value.trim()) { tip.textContent = t('v_phone_empty'); phoneBox.focus(); return; }
-  const ph = readPhone('pe');
-  if (!ph.ok) { tip.textContent = ph.msg; return; }
+  const body = { name: nm.name };
+  /* 手机号留空 = 不修改；填了就整号校验 */
+  if (document.getElementById('pePhone').value.trim()) {
+    const ph = readPhone('pe');
+    if (!ph.ok) { tip.textContent = ph.msg; return; }
+    body.phoneCc = ph.phoneCc; body.phone = ph.phone;
+  }
   const em = readEmail('pEmailEdit');
   if (!em.ok) { tip.textContent = em.msg; return; }
+  body.email = em.email;
   tip.textContent = t('saving');
   try {
-    await apiUpdatePatient(doc.docKey, { name: nm.name, phoneCc: ph.phoneCc, phone: ph.phone, email: em.email });
-    saveSession({ name: nm.name, idType: doc.idType, nationality: doc.nationality, idCard: doc.idCard, docKey: doc.docKey,
-                  phoneCc: ph.phoneCc, phone: ph.phone, email: em.email });
+    await apiUpdatePatient(sessKey(sess), body);
+    saveSession({ name: nm.name, email: em.email });
     tip.textContent = t('saved');
-    setTimeout(function () { tip.textContent = ''; }, 2000);
+    setTimeout(function () { loadProfile(); }, 900);
   } catch (e) {
-    tip.textContent = e.message || t('fail');
+    tip.textContent = trError(e.message) || t('fail');
   }
 }
 
@@ -1251,8 +1318,8 @@ function showLoginInfo() {
   var roleName = ROLE_LABEL[currentUser.role] || currentUser.role || '管理员';
   if (el) el.textContent = '当前账号：' + currentUser.username + ' · ' + roleName;
   renderKioskSetting();
-  if (badge) { badge.textContent = '✅ ' + roleName + '已登录'; badge.title = '点击进入后台管理'; badge.style.display = ''; }
-  if (bar) { bar.textContent = '✅ ' + roleName + '已登录 · 进入后台管理 ›'; bar.className = 'staff-bar on'; }
+  if (badge) { badge.innerHTML = icon('check') + escapeHtml(roleName + '已登录'); badge.title = '点击进入后台管理'; badge.style.display = ''; }
+  if (bar) { bar.innerHTML = icon('check') + escapeHtml(roleName + '已登录 · 进入后台管理 ›'); bar.className = 'staff-bar on'; }
 }
 
 /* 三个角色的中文名。和后端 users.role 的取值一一对应。 */
@@ -1414,7 +1481,7 @@ function renderDeptCards(items, others, q) {
     html += '<div class="card-title">' + deptIcon(d.id) + ' ' + escapeHtml(trDeptName(d)) + sexLimitBadge(d.id) + '</div>';
     if (items[i].hits && items[i].hits.length) html += '<div class="tip">' + t('match') + ': ' + escapeHtml(items[i].hits.join('、')) + '</div>';
     html += '<div class="tip">' + escapeHtml(trDeptDesc(d)) + '</div>';
-    html += '<div class="tip">📍 ' + escapeHtml(d.location ? trLocation(d.location) : t('loc_tbd')) + ' · ' + t('n_doctors', { n: docs.length }) + '</div>';
+    html += '<div class="tip">' + icon('pin') + ' ' + escapeHtml(d.location ? trLocation(d.location) : t('loc_tbd')) + ' · ' + t('n_doctors', { n: docs.length }) + '</div>';
     html += '</div>';
   }
   if (!items.length && !others.length && !docs.length) html = '<p class="tip search-hint">' + t('no_match') + '</p>';
@@ -1462,7 +1529,7 @@ function renderDoctorList() {
   for (var i = 0; i < docs.length; i++) {
     var d = docs[i], st = scheduleStatus(d.id);
     var badge = '<span class="badge ' + st.cls + '">' + st.text + '</span>';
-    var sel = (bookingState.doctorId === d.id) ? ' style="border-color:#2563eb;background:#eef3ff"' : '';
+    var sel = (bookingState.doctorId === d.id) ? ' style="border-color:#1f5e55;background:#eaf2ee"' : '';
     html += `<div class="doc-card"${sel} onclick="pickDoctor('${d.id}')">`;
     html += '<div class="avatar">' + escapeHtml(d.name.charAt(0)) + '</div>';
     html += '<div class="info">';
@@ -1526,7 +1593,7 @@ function renderSchedulePanel() {
       if (s.date !== bookingState.date || s.closed) continue;
       var st = s.remain > 5 ? 'green' : s.remain > 0 ? 'orange' : 'grey';
       var stText = s.remain > 5 ? t('st_avail') : s.remain > 0 ? t('st_tight') : t('st_full');
-      var on = (bookingState.scheduleId === s.id) ? ' style="border-color:#2563eb;background:#eef3ff"' : '';
+      var on = (bookingState.scheduleId === s.id) ? ' style="border-color:#1f5e55;background:#eaf2ee"' : '';
       html += `<div class="card"${on} onclick="selectPeriod('${s.id}')">`;
       html += '<div class="card-title">' + escapeHtml(trPeriod(s.period)) + ' <span class="badge ' + st + '">' + stText + ' · ' + t('remain', { n: s.remain }) + '</span></div>';
       html += '<div class="tip">' + escapeHtml(trRoom(s.room)) + ' · ' + fmtMoney(docFee) + '</div>';
@@ -1676,60 +1743,190 @@ function startKioskCountdown() {
     var el = document.getElementById('kioskCountdown');
     if (!el || bookingState.step !== 4) { clearInterval(kioskCountdownTimer); return; }   // 已经离开成功页
     if (n <= 0) { clearInterval(kioskCountdownTimer); forgetPatient(); return; }
-    el.textContent = '🏥 ' + t('kiosk_countdown', { n: n });
+    el.innerHTML = icon('logo') + ' ' + escapeHtml(t('kiosk_countdown', { n: n }));
     n--;
   };
   tick();
   kioskCountdownTimer = setInterval(tick, 1000);
 }
+/* ---------- 预约凭证 ----------
+ * 挂号成功页和「我的预约 → 查看凭证」用同一份内容，成功页关掉之后也能随时再打开。
+ * apt 是接口返回的挂号单（map_appointment）：科室、医生、诊室、日期、时段、号序、单号都在上面。 */
+let voucherApt = null;
+function aptDept(apt) {
+  for (var i = 0; i < departments.length; i++) { if (departments[i].id === apt.deptId) return departments[i]; }
+  return null;
+}
+function aptDoctor(apt) {
+  for (var i = 0; i < doctors.length; i++) { if (doctors[i].id === apt.doctorId) return doctors[i]; }
+  return null;
+}
+function voucherDetailHtml(apt, patientName) {
+  var dept = aptDept(apt), doc = aptDoctor(apt);
+  var html = '<div class="detail">';
+  html += '<p><b>' + t('f_dept') + colon() + '</b>' + escapeHtml(dept ? trDeptName(dept) : (apt.deptName || ''))
+        + ' · ' + escapeHtml(doc ? trDoctorName(doc) + ' ' + trTitle(doc.title) : (apt.doctorName || '')) + '</p>';
+  html += '<p><b>' + t('f_time') + colon() + '</b>' + escapeHtml(apt.date || '') + ' ' + escapeHtml(apt.date ? weekdayLabel(apt.date) : '') + ' ' + escapeHtml(trPeriod(apt.period)) + '</p>';
+  html += '<p><b>' + t('f_place') + colon() + '</b>' + escapeHtml(dept ? trLocation(dept.location || '') : trLocation(apt.location || '')) + ' · ' + escapeHtml(trRoom(apt.room)) + '</p>';
+  html += '<p><b>' + t('f_arrive') + colon() + '</b>' + suggestArrival(apt.period) + '</p>';
+  html += '<p><b>' + t('f_patient') + colon() + '</b>' + escapeHtml(patientName || apt.patientName || '') + '</p>';
+  html += '<p><b>' + t('f_fee') + colon() + '</b>' + fmtMoney(apt.fee || 0) + '</p>';
+  /* 单号显示患者查询用的预约单号（10 位），没有时退回内部编号 */
+  html += '<p><b>' + t('f_apt_no') + colon() + '</b>' + escapeHtml(apt.appointmentNo || apt.id || '') + ' · ' + t('seq') + ' ' + (apt.seqNo || '-') + '</p>';
+  html += '</div>';
+  return html;
+}
+/* 凭证上的操作：日历、路线，待就诊的还能改约、取消 */
+function voucherActionsHtml(apt) {
+  var html = '<button class="btn" onclick="addToCalendar()">' + icon('calendar') + escapeHtml(t('add_cal')) + '</button>';
+  html += '<button class="btn" onclick="viewRoute()">' + icon('route') + escapeHtml(t('route')) + '</button>';
+  if (apt.status === 'booked') {
+    html += '<button class="btn" onclick="rescheduleAppt(\'' + apt.id + '\',\'' + apt.deptId + '\')">' + t('edit_appt') + '</button>';
+    html += '<button class="btn" onclick="cancelVoucherAppt()">' + t('cancel_appt') + '</button>';
+  }
+  return html;
+}
+
 function renderStep4(body) {
   var apt = bookingState.apt || {};
-  var dept = null, doc = null;
-  for (var i = 0; i < departments.length; i++) { if (departments[i].id === bookingState.deptId) { dept = departments[i]; break; } }
-  for (var i = 0; i < doctors.length; i++) { if (doctors[i].id === bookingState.doctorId) { doc = doctors[i]; break; } }
+  apt.status = apt.status || 'booked';
+  voucherApt = apt;
   var html = '<div class="success-box">';
-  html += '<div class="big-check">✅</div>';
+  html += '<div class="big-check">' + icon('check') + '</div>';
   html += '<h2>' + t('success') + '</h2>';
-  html += '<div class="detail">';
-  html += '<p><b>' + t('f_time') + colon() + '</b>' + escapeHtml(apt.date || '') + ' ' + escapeHtml(apt.date ? weekdayLabel(apt.date) : '') + ' ' + escapeHtml(trPeriod(apt.period)) + '</p>';
-  html += '<p><b>' + t('f_place') + colon() + '</b>' + escapeHtml(dept ? trLocation(dept.location || '') : '') + ' · ' + escapeHtml(trRoom(apt.room)) + '</p>';
-  html += '<p><b>' + t('f_arrive') + colon() + '</b>' + suggestArrival(apt.period) + '</p>';
-  html += '<p><b>' + t('f_patient') + colon() + '</b>' + escapeHtml(bookingState.patient ? bookingState.patient.name : '') + '</p>';
-  html += '<p><b>' + t('f_fee') + colon() + '</b>' + fmtMoney(apt.fee || 0) + '</p>';
-  html += '<p><b>' + t('f_apt_no') + colon() + '</b>' + escapeHtml(apt.id || '') + ' · ' + t('seq') + ' ' + (apt.seqNo || '-') + '</p>';
-  html += '</div>';
+  html += voucherDetailHtml(apt, bookingState.patient ? bookingState.patient.name : '');
+  html += '<div class="actions">' + voucherActionsHtml(apt) + '</div>';
   html += '<div class="actions">';
-  html += '<button class="btn" onclick="addToCalendar()">' + t('add_cal') + '</button>';
-  html += '<button class="btn" onclick="viewRoute()">' + t('route') + '</button>';
-  html += '<button class="btn" onclick="cancelJustBooked()">' + t('cancel_appt') + '</button>';
   html += '<button class="btn primary" onclick="startBooking()">' + t('continue_booking') + '</button>';
+  html += '<button class="btn" onclick="showPage(\'mine\')">' + t('view_mine') + '</button>';
   if (!rememberOn()) html += '<button class="btn" onclick="forgetPatient()">' + t('done_clear') + '</button>';
-  if (isKiosk()) html += '<p class="kiosk-note" id="kioskCountdown"></p>';
   html += '</div>';
+  if (isKiosk()) html += '<p class="kiosk-note" id="kioskCountdown"></p>';
+  else html += '<p class="tip">' + t('voucher_tip') + '</p>';
   html += '<p class="tip">' + t('bring_docs') + '</p>';
   html += '</div>';
   body.innerHTML = html;
   if (isKiosk()) startKioskCountdown();
 }
-function cancelJustBooked() {
-  var apt = bookingState.apt;
+
+/* 我的预约 → 查看凭证 */
+let mineApts = {};          // renderMineList 拉到的挂号单，按编号存，打开凭证时直接取
+function openVoucher(aptId) {
+  var apt = mineApts[aptId];
+  if (!apt) return;
+  voucherApt = apt;
+  document.getElementById('voucherBody').innerHTML = voucherDetailHtml(apt)
+    + '<p class="tip">' + t('bring_docs') + '</p>'
+    + '<div class="actions">' + voucherActionsHtml(apt)
+    + '<button class="btn primary" onclick="closeVoucher()">' + t('close') + '</button></div>';
+  document.getElementById('voucherMask').style.display = 'flex';
+}
+/* ---------- 开源致谢 ----------
+ * 本系统用到的开源项目。科室搜索词典的数据来自 GitHub 上的 QASystemOnMedicalKG（原项目注明请勿商用），
+ * 拼音由 pypinyin 生成；运行时依赖 Flask、psycopg 与 PostgreSQL。前端没有用第三方库。 */
+const CREDITS = [
+  ['QASystemOnMedicalKG', 'liuhuanyong', 'https://github.com/liuhuanyong/QASystemOnMedicalKG', 'cr_kg'],
+  ['pypinyin', 'mozillazg', 'https://github.com/mozillazg/python-pinyin', 'cr_pinyin'],
+  ['Flask', 'Pallets', 'https://github.com/pallets/flask', 'cr_flask'],
+  ['psycopg', 'The Psycopg Team', 'https://github.com/psycopg/psycopg', 'cr_psycopg'],
+  ['PostgreSQL', 'PostgreSQL Global Development Group', 'https://www.postgresql.org/', 'cr_pg'],
+];
+function openCredits() {
+  var html = '<p class="tip">' + escapeHtml(t('credits_intro')) + '</p><ul class="credits">';
+  CREDITS.forEach(function (c) {
+    html += '<li><a href="' + c[2] + '" target="_blank" rel="noopener noreferrer"><b>' + escapeHtml(c[0]) + '</b></a>'
+          + ' <span class="tip">' + escapeHtml(c[1]) + '</span><br>' + escapeHtml(t(c[3])) + '</li>';
+  });
+  html += '</ul><p class="tip">' + escapeHtml(t('cr_self')) + '</p>';
+  document.getElementById('creditsBody').innerHTML = html;
+  document.getElementById('creditsMask').style.display = 'flex';
+}
+function closeCredits() {
+  document.getElementById('creditsMask').style.display = 'none';
+}
+
+function closeVoucher() {
+  document.getElementById('voucherMask').style.display = 'none';
+}
+function cancelVoucherAppt() {
+  var apt = voucherApt;
   if (!apt || !apt.id) return;
   if (!confirm(t('confirm_cancel'))) return;
-  apiCancelAppointment(apt.id).then(function () { alert(t('cancelled_ok')); showPage('mine'); }).catch(function (e) { alert(e.message); });
+  apiCancelAppointment(apt.id).then(function () {
+    alert(t('cancelled_ok'));
+    closeVoucher();
+    showPage('mine');
+  }).catch(function (e) { alert(e.message); });
 }
 function addToCalendar() {
-  var apt = bookingState.apt;
+  var apt = voucherApt;
   if (!apt) return;
-  var dept = null, doc = null;
-  for (var i = 0; i < departments.length; i++) { if (departments[i].id === bookingState.deptId) dept = departments[i]; }
-  for (var k = 0; k < doctors.length; k++) { if (doctors[k].id === bookingState.doctorId) doc = doctors[k]; }
-  var text = (apt.date || '') + ' ' + trPeriod(apt.period) + ' · ' + (dept ? trDeptName(dept) : '') + ' · ' + (doc ? trDoctorName(doc) : '')
+  var dept = aptDept(apt), doc = aptDoctor(apt);
+  var text = (apt.date || '') + ' ' + trPeriod(apt.period) + ' · ' + (dept ? trDeptName(dept) : (apt.deptName || '')) + ' · ' + (doc ? trDoctorName(doc) : (apt.doctorName || ''))
     + '\n' + t('f_arrive') + ': ' + suggestArrival(apt.period)
     + '\n' + t('f_place') + ': ' + (dept ? trLocation(dept.location || '') : '') + ' · ' + trRoom(apt.room);
   alert(t('cal_copied') + '\n' + text);
 }
+/* ---------- 怎么走 ----------
+ * 不跳外部地图：按科室位置（如「门诊楼 2 层东区」）画一张楼层示意图（电梯 → 目标区域的箭头），
+ * 再用箭头串起几步文字指引。位置格式见 seed_data.DEPARTMENTS 的 location。 */
+const ROUTE_DIR = { '东区': 'E', '西区': 'W', '北侧': 'N', '南侧': 'S' };
+function parseLocation(loc) {
+  const m = /^(门诊楼|医技楼)\s*(\d+)\s*层(东区|西区|北侧|南侧)?/.exec((loc || '').trim());
+  return m ? { bld: m[1], floor: Number(m[2]), side: m[3] || '' } : null;
+}
+function routeSvg(dir, zoneName) {
+  /* 300×190 的楼层平面：上北下南；电梯在中间，目标区域高亮，箭头从电梯指过去 */
+  const zones = { E: [205, 18, 80, 154], W: [15, 18, 80, 154], N: [15, 18, 270, 46], S: [15, 126, 270, 46] };
+  const tips = { E: [205, 95], W: [95, 95], N: [150, 64], S: [150, 126] };
+  let g = '<rect x="10" y="12" width="280" height="166" rx="10" fill="#f6f1e8" stroke="#a59a88" stroke-width="2"/>';
+  if (zones[dir]) {
+    const z = zones[dir];
+    g += '<rect x="' + z[0] + '" y="' + z[1] + '" width="' + z[2] + '" height="' + z[3] + '" rx="8" fill="#d6e6df" stroke="#1f5e55" stroke-width="2"/>';
+    const tp = tips[dir];
+    g += '<line x1="150" y1="95" x2="' + tp[0] + '" y2="' + tp[1] + '" stroke="#1f5e55" stroke-width="4" marker-end="url(#rtArrow)"/>';
+    if (zoneName) g += '<text x="' + (z[0] + z[2] / 2) + '" y="' + (z[1] + (dir === 'E' || dir === 'W' ? 24 : z[3] / 2 + 5)) + '" text-anchor="middle" font-size="13" font-weight="700" fill="#174a43">' + escapeHtml(zoneName) + '</text>';
+  }
+  g += '<rect x="128" y="78" width="44" height="34" rx="6" fill="#fff" stroke="#3a342c" stroke-width="2"/>'
+     + '<text x="150" y="100" text-anchor="middle" font-size="12" fill="#3a342c">' + escapeHtml(t('rt_lift')) + '</text>'
+     + '<text x="150" y="10" text-anchor="middle" font-size="11" fill="#6b6459">↑ N</text>';
+  return '<svg class="route-map" viewBox="0 0 300 190" role="img" aria-label="' + escapeHtml(t('rt_h')) + '">'
+    + '<defs><marker id="rtArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1f5e55"/></marker></defs>'
+    + g + '</svg>';
+}
 function viewRoute() {
-  window.open('https://map.baidu.com/search/' + encodeURIComponent(HOSPITAL.address), '_blank');
+  const apt = voucherApt;
+  if (!apt) return;
+  const dept = aptDept(apt);
+  const locZh = (dept && dept.location) || apt.location || '';
+  const L = parseLocation(locZh);
+  const i = trIdx();
+  const bld = L ? LOC_PARTS.bld[L.bld][i] : trLocation(locZh);
+  const floorTxt = L ? LOC_PARTS.floor[i].replace('{n}', L.floor) : '';
+  const dir = L ? ROUTE_DIR[L.side] : '';
+  /* 方向箭头：同一个向右的箭头按方向旋转 */
+  const rot = { E: 0, S: 90, W: 180, N: 270 }[dir];
+  const arrow = rot === undefined ? icon('sign')
+    : '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="transform:rotate(' + rot + 'deg)">' + ICONS.arrow + '</svg>';
+  const steps = [
+    [icon('door'), t('rt_1', { b: bld })],
+    [icon(L && L.floor > 1 ? 'lift' : 'check'), L && L.floor > 1 ? t('rt_2', { f: floorTxt }) : t('rt_2g')],
+    [arrow, dir ? t('rt_3', { d: t('rt_d_' + dir), z: LOC_PARTS.side[L.side][i] }) : t('rt_3c')],
+    [icon('steth'), t('rt_4', { r: trRoom(apt.room) })],
+  ];
+  let h = '<p class="route-where"><b>' + escapeHtml(trLocation(locZh)) + ' · ' + escapeHtml(trRoom(apt.room)) + '</b></p>';
+  h += routeSvg(dir, dir ? LOC_PARTS.side[L.side][i] : '');
+  h += '<ol class="route-steps">';
+  steps.forEach(function (st, k) {
+    h += '<li><span class="rs-ic">' + st[0] + '</span><span class="rs-tx">' + escapeHtml(st[1]) + '</span></li>';
+    if (k < steps.length - 1) h += '<li class="rs-arrow" aria-hidden="true">↓</li>';
+  });
+  h += '</ol><p class="tip">' + escapeHtml(t('rt_tip')) + '</p>';
+  document.getElementById('routeBody').innerHTML = h;
+  document.getElementById('routeMask').style.display = 'flex';
+}
+function closeRoute() {
+  document.getElementById('routeMask').style.display = 'none';
 }
 /* ---------- 我的预约（分组） ---------- */
 function switchMineTab(tab) {
@@ -1764,7 +1961,8 @@ async function renderMineList(tab) {
     if (tip) tip.textContent = t('total_n', { n: list.length });
     if (list.length === 0) { listEl.innerHTML = '<p class="tip">' + t('no_records') + '</p>'; return; }
     var html = '';
-    for (var i = 0; i < list.length; i++) html += renderApptCard(list[i], tab);
+    mineApts = {};
+    for (var i = 0; i < list.length; i++) { mineApts[list[i].id] = list[i]; html += renderApptCard(list[i], tab); }
     listEl.innerHTML = html;
   } catch (e) {
     listEl.innerHTML = '<p class="tip">' + t('load_fail') + escapeHtml(e.message) + '</p>';
@@ -1782,8 +1980,9 @@ function renderApptCard(a, tab) {
   html += '<div class="header"><span class="title">' + escapeHtml(deptName(a.deptId) || a.deptName) + ' · ' + escapeHtml(doctorName(a.doctorId) || a.doctorName) + '</span><span class="badge ' + cls + '">' + st + '</span></div>';
   html += '<div class="meta">' + escapeHtml(a.date || '') + ' ' + escapeHtml(trPeriod(a.period)) + ' · ' + t('seq') + ' ' + (a.seqNo || '-') + ' · ' + t('fee') + ' ' + fmtMoney(a.fee || 0) + '</div>';
   if (a.status === 'booked') {
-    html += '<div class="meta" style="color:#2563eb">' + fmtCountdown(a.date) + '</div>';
+    html += '<div class="meta" style="color:#1f5e55">' + fmtCountdown(a.date) + '</div>';
     html += '<div class="actions">';
+    html += `<button class="btn small" onclick="openVoucher('${a.id}')">${t('view_voucher')}</button> `;
     html += `<button class="btn small" onclick="cancelAppt('${a.id}')">${t('cancel_appt')}</button>`;
     html += ` <button class="btn small primary" onclick="rescheduleAppt('${a.id}','${a.deptId}')">${t('reschedule')}</button>`;
     html += '</div>';
@@ -1798,6 +1997,7 @@ function cancelAppt(aptId) {
 function rescheduleAppt(aptId, deptId) {
   if (!confirm(t('confirm_reschedule'))) return;
   apiCancelAppointment(aptId).then(function () {
+    closeVoucher();
     bookingState = { step: 2, deptId: deptId, doctorId: '', scheduleId: '', date: '', period: '', patient: loadSession(), apt: null };
     showPage('booking'); renderBookingStep();
   }).catch(function (e) { alert(e.message); });
@@ -2386,6 +2586,43 @@ function enhanceSelect(sel) {
   sync();
 }
 
+/* ============================================================
+ * 按钮文字自适应：导航、页签、步骤条、常用科室这些「一格一个词」的地方，
+ * 外文或大字版下可能放不下。先在一行里逐步缩小字号（最小到原来的六成、不小于 11px），
+ * 还放不下才允许在空格处换行 —— 永远不在单词中间断开（不会出现 Upcomin / g）。
+ * 页面内容变化、切语言、切大字版、窗口尺寸变化时自动重算。
+ * ============================================================ */
+/* 两种：一行放完的（导航、页签、步骤条……）先不换行地缩字号；
+ * 允许多行的（常用科室格子）只在空格处换行，最长的那个词放不下时才缩字号 */
+const FIT_ONE_LINE = ['.nav a span', '.center-tabs .btn', '#mineTabs .btn', '.progress-bar .step em', '.btn', '.staff-bar', '.logo'];
+const FIT_MULTI_LINE = ['.dq'];
+function fitLabels() {
+  var fits = function (el) { return el.scrollWidth <= el.clientWidth + 1; };
+  document.querySelectorAll(FIT_ONE_LINE.join(',')).forEach(function (el) {
+    el.style.fontSize = '';
+    el.style.whiteSpace = '';
+    if (el.offsetParent === null || !el.clientWidth) return;
+    el.style.whiteSpace = 'nowrap';
+    var fs = parseFloat(getComputedStyle(el).fontSize);
+    var min = Math.max(10, fs * 0.55);
+    while (!fits(el) && fs > min) { fs -= 0.5; el.style.fontSize = fs + 'px'; }
+    if (!fits(el)) el.style.whiteSpace = 'normal';    // 仍放不下：只在空格处换行（CSS 里 word-break: keep-all）
+  });
+  document.querySelectorAll(FIT_MULTI_LINE.join(',')).forEach(function (el) {
+    el.style.fontSize = '';
+    if (el.offsetParent === null || !el.clientWidth) return;
+    var fs = parseFloat(getComputedStyle(el).fontSize);
+    var min = Math.max(10, fs * 0.55);
+    while (!fits(el) && fs > min) { fs -= 0.5; el.style.fontSize = fs + 'px'; }
+  });
+}
+let fitPending = false;
+function scheduleFit() {
+  if (fitPending) return;
+  fitPending = true;
+  requestAnimationFrame(function () { fitPending = false; fitLabels(); });
+}
+
 function syncSearchable(id) {
   const el = document.getElementById(id);
   if (el && el._ssSync) el._ssSync();
@@ -2431,6 +2668,10 @@ function watchDataTables() {
 window.onload = async function () {
   watchDataTables();
   watchSearchableSelects();
+  /* 内容变了（翻页、切语言、重画列表）或窗口尺寸变了，就重新给按钮文字算字号。
+   * 只监听节点和文字变化，不监听属性 —— fitLabels 自己改的是 style 属性，不会触发死循环 */
+  new MutationObserver(scheduleFit).observe(document.body, { childList: true, subtree: true, characterData: true });
+  window.addEventListener('resize', scheduleFit);
 
   /* 先问服务端这台机器是不是按 IP 登记的自助机（没配置 HMS_KIOSK_IPS 时一律不是） */
   try {
@@ -2630,7 +2871,7 @@ async function renderMyWaitlist() {
       + '<div class="meta">' + escapeHtml(w.date + ' ' + weekdayLabel(w.date) + ' ' + trPeriod(w.period)) + ' · ' + money(w.fee) + '</div>'
       + '<div class="meta">' + t('f_patient') + colon() + escapeHtml(w.patientName) + ' · ' + escapeHtml(w.idCard)
       + ' · ' + (w.hasEmail ? t('wl_email_yes') : t('wl_email_no')) + '</div>'
-      + (offered && w.offerExpiresAt ? '<div class="meta" style="color:#2563eb">' + t('wl_keep', { t: fmtTime(w.offerExpiresAt) }) + '</div>' : '')
+      + (offered && w.offerExpiresAt ? '<div class="meta" style="color:#1f5e55">' + t('wl_keep', { t: fmtTime(w.offerExpiresAt) }) + '</div>' : '')
       + (actions ? '<div class="actions">' + actions + '</div>' : '')
       + '</div>';
   }
@@ -3430,6 +3671,7 @@ const BIGFONT_KEY = 'hosp_reg_bigfont';
 function applyBigFont(on) {
   if (on) document.body.classList.add('big');
   else document.body.classList.remove('big');
+  scheduleFit();
 
   const btn = document.getElementById('fontToggle');
   if (btn) {

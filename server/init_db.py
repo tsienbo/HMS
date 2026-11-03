@@ -33,7 +33,7 @@ V3_TABLES = ["waitlist", "notification_outbox", "access_log", "blacklist"]
 
 # v3.x 陆续加的表（患者凭证、验证码、实名校验）与科室搜索词典 —— 只用于对象清单核对
 OTHER_TABLES = ["patient_sessions", "verification_codes", "citizen_registry",
-                "identity_verify_log", "dept_keywords"]
+                "identity_verify_log", "dept_keywords", "doctor_fee_history"]
 
 EXPECTED_TABLES = CORE_TABLES + V3_TABLES + OTHER_TABLES
 
@@ -41,10 +41,11 @@ EXPECTED_TABLES = CORE_TABLES + V3_TABLES + OTHER_TABLES
 EXPECTED_VIEWS = ["v_available_schedules", "v_appointment_detail",
                   "v_doctor_workload", "v_appointment_public",
                   "v_waitlist_detail"]
-EXPECTED_TRIGGERS = 20
+EXPECTED_TRIGGERS = 21
 # 14 个触发器函数 + fn_offer_next_waitlist + fn_verify_identity + fn_search_departments
 # + 证件工具 5 个（fn_gb11643_ok / fn_doc_valid / fn_doc_key / fn_mask_doc / fn_norm_name）
-EXPECTED_FUNCTIONS = 22
+# + 挂号费 2 个（fn_doctor_fee 定价规则 / fn_doctor_fee_history 价目历史触发器）
+EXPECTED_FUNCTIONS = 24
 
 
 # ------------------------------------------------------------
@@ -125,6 +126,7 @@ def drop_v3_tables():
     """
     query("""
         DROP TABLE IF EXISTS dept_keywords       CASCADE;
+        DROP TABLE IF EXISTS doctor_fee_history  CASCADE;
         DROP TABLE IF EXISTS patient_sessions    CASCADE;
         DROP TABLE IF EXISTS notification_outbox CASCADE;
         DROP TABLE IF EXISTS waitlist            CASCADE;

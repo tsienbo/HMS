@@ -84,9 +84,10 @@ CREATE TABLE departments (
 --    is_active 是「软删除」开关：医生离职不删行，只置 FALSE。
 --    原因见文件末尾的删除保护触发器 —— 医生一旦有排班和挂号，
 --    物理删除会让历史单据失去归属，所以这里留一个状态位。
---    fee 不写 CHECK (fee >= 0)：单列域约束挡不住「主任医师 50 元被改成 1 元」，
---    1 是合法数字但不是合法价格。真正的规则是「fee 必须等于该职称对应的价目」，
---    写成下面的跨列 CHECK ck_doctor_fee_tier。
+--    fee 只靠 CHECK (fee > 0) 挡不住「主任医师 21.5 元被改成 1 元」，
+--    1 是合法数字但不是合法价格。真正的规则是「fee 必须等于按职称和科室算出的价格」
+--    （湖北省门诊诊查费标准），写在 schema_v3.sql 第 14 节：定价函数 fn_doctor_fee
+--    与跨列 CHECK ck_doctor_fee_rule。
 -- ------------------------------------------------------------
 CREATE TABLE doctors (
   id         VARCHAR(8)   PRIMARY KEY,
@@ -97,19 +98,9 @@ CREATE TABLE doctors (
   is_active  BOOLEAN      NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  CONSTRAINT ck_doctor_title CHECK (title IN ('主任医师','副主任医师','主治医师')),
-  -- 价格档位（跨列约束）：挂号费必须与职称匹配。
-  -- 主任医师 50 / 副主任医师 30 / 主治医师 15。
-  -- 由于 ck_doctor_title 已把 title 限死在三个值上，这条约束同时蕴含了 fee >= 0。
-  CONSTRAINT ck_doctor_fee_tier CHECK (
-    (title = '主任医师'   AND fee = 50.00) OR
-    (title = '副主任医师' AND fee = 30.00) OR
-    (title = '主治医师'   AND fee = 15.00)
-  ),
-  -- 单看 id 它本来就唯一（主键），这里多声明一条的唯一目的，
-  -- 是给 appointments 的「医生 + 挂号费」复合外键提供引用目标：
-  -- PostgreSQL 要求外键指向的列组合上必须有唯一约束。
-  CONSTRAINT uq_doctor_id_fee UNIQUE (id, fee)
+  CONSTRAINT ck_doctor_title CHECK (title IN ('主任医师','副主任医师','主治医师'))
+  -- 挂号费的取值规则（ck_doctor_fee_rule，按湖北省门诊诊查费标准）和价目历史表
+  -- doctor_fee_history 都在 schema_v3.sql 第 14 节：已有库升级只会重跑 schema_v3.sql。
 );
 -- 外键列必须建索引：删科室、改医生编号时，数据库要按 dept_id 反查医生。
 CREATE INDEX idx_doctors_dept ON doctors(dept_id);
@@ -237,13 +228,6 @@ CREATE TABLE appointments (
   -- ON DELETE RESTRICT：排班一旦有挂号记录就删不掉，避免预约凭空消失。
   CONSTRAINT fk_appt_schedule FOREIGN KEY (schedule_id, doctor_id)
     REFERENCES schedules (id, doctor_id) ON DELETE RESTRICT,
-
-  -- 挂号费防篡改：把「接诊医生 + 挂号费」当成一个整体，去引用 doctors 的
-  -- (id, fee) 唯一键。价目表被 ck_doctor_fee_tier 锁死在固定三档上，
-  -- 所以这条外键等价于「挂号单上的价格必须与该医生的职称相符」。
-  -- 哪怕有人绕过接口手写 SQL，也会被数据库拒绝（SQLSTATE 23503）。
-  CONSTRAINT fk_appt_doctor_fee FOREIGN KEY (doctor_id, fee)
-    REFERENCES doctors (id, fee),
 
   -- 同一号源下号序不能重复。注意：这条约束意味着「退号后不重排序号」，
   -- 退掉的号就是空号 —— 这是真实医院的做法，也让历史单据的序号保持不变。
