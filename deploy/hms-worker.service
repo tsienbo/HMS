@@ -1,0 +1,16 @@
+[Unit]
+Description=HMS reminders, waitlist and schedule maintenance
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+User=efface
+WorkingDirectory=/opt/hms
+EnvironmentFile=-/etc/hms/hms.env
+Environment=TZ=Asia/Shanghai
+ExecStart=/opt/hms/.venv/bin/python /opt/hms/server/app.py --worker --interval 60
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

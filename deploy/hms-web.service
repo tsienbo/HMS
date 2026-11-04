@@ -1,0 +1,18 @@
+[Unit]
+Description=HMS Web
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+User=efface
+WorkingDirectory=/opt/hms
+EnvironmentFile=-/etc/hms/hms.env
+Environment=HOST=0.0.0.0
+Environment=PORT=3000
+Environment=TZ=Asia/Shanghai
+ExecStart=/opt/hms/.venv/bin/python /opt/hms/server/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

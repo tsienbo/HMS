@@ -312,16 +312,17 @@ def ensure_schedules(days=SEED_DAYS):
     for sc in items:
         if sc["id"] in exist:
             continue
-        query(
+        inserted = query(
             """INSERT INTO schedules
                  (id, doctor_id, dept_id, work_date, weekday, time_slot,
                   start_time, end_time, room, max_quota, booked_count, closed)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, FALSE)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, FALSE)
+               ON CONFLICT DO NOTHING""",
             [sc["id"], sc["doctorId"], sc["deptId"], sc["date"],
              sc["weekday"], sc["timeSlot"], sc["startTime"], sc["endTime"],
              sc["room"], sc["maxQuota"]],
         )
-        n += 1
+        n += inserted.rowcount
     return n
 
 

@@ -15,6 +15,7 @@ import hmac
 import re
 import secrets
 from datetime import date
+from business_time import today
 
 # ============================================================
 # 一、口令散列
@@ -112,7 +113,7 @@ def check_id_card(raw):
         born = date(int(v[6:10]), int(v[10:12]), int(v[12:14]))
     except ValueError:
         return False, "身份证中的出生日期不存在，请核对", None
-    if born.year < 1900 or born > date.today():
+    if born.year < 1900 or born > today():
         return False, "身份证中的出生日期不合法", None
 
     return True, None, v

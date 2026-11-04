@@ -173,6 +173,10 @@ def flush(limit=50):
 
         try:
             send_mail(row["recipient"], row["subject"], row["body"])
+            if not CONFIG.ready:
+                # 演示日志不代表已送达。保留待发状态，补好 SMTP 后仍可投递。
+                stats["skipped"] += 1
+                continue
             query("""UPDATE notification_outbox
                         SET status = 'sent', sent_at = NOW(), attempts = attempts + 1
                       WHERE id = %s""", [row["id"]])

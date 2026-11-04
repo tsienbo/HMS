@@ -6,6 +6,7 @@
 """
 
 from datetime import date, timedelta
+from business_time import today
 
 # ------------------------------------------------------------
 # 科室
@@ -99,7 +100,7 @@ def weekday_label(d):
 
 def build_date_range(days, start=None):
     """从今天起，连续 days 天的 (date, 星期标签) 列表。"""
-    start = start or date.today()
+    start = start or today()
     return [(start + timedelta(days=i), weekday_label(start + timedelta(days=i)))
             for i in range(days)]
 

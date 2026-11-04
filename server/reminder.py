@@ -23,6 +23,8 @@ import time
 from datetime import datetime
 
 from db import query
+from db import transaction
+from business_time import now as business_now
 
 # 提醒规则：(模板, 就诊日相对今天的偏移, 从几点开始允许发)
 #   偏移 +1 = 明天要来的号（今天提醒他「明天来」），0 = 今天的号
@@ -93,7 +95,7 @@ def scan_reminders(now=None, ignore_window=False):
 
     返回 {(模板, 渠道): 新增条数}。新增 0 说明之前已经排过了（幂等生效）。
     """
-    now = now or datetime.now()
+    now = now or business_now()
     out = {}
 
     for template, offset, start_hour in RULES:
@@ -112,37 +114,29 @@ def expire_offers():
     为什么不在触发器里做：没有人写入的时候，触发器不会醒过来。
     只能靠定时任务发现「这个 offer 已经超时了」。
     """
-    expired = query(
-        """UPDATE waitlist
-              SET status = 'expired'
-            WHERE status = 'offered'
-              AND offer_expires_at <= NOW()
-        RETURNING id, schedule_id, patient_id"""
-    ).rows
-
-    if not expired:
-        return {"expired": 0, "reoffered": 0}
-
-    # 同一个排班可能一次过期好几个（都超时了），逐个补位即可 ——
-    # fn_offer_next_waitlist 每次都取队首，所以顺序自然是对的。
-    schedules = []
-    for row in expired:
-        if row["schedule_id"] not in schedules:
-            schedules.append(row["schedule_id"])
-
+    schedules = query("""SELECT DISTINCT schedule_id FROM waitlist
+                         WHERE status='offered' AND offer_expires_at <= clock_timestamp()
+                         ORDER BY schedule_id""").rows
+    expired = 0
     reoffered = 0
-    for sid in schedules:
-        r = query("SELECT fn_offer_next_waitlist(%s) AS wl", [sid])
-        if r.rows and r.rows[0]["wl"]:
-            reoffered += 1
-
-    return {"expired": len(expired), "reoffered": reoffered}
+    for row in schedules:
+        sid = row["schedule_id"]
+        with transaction() as run:
+            run("SELECT id FROM schedules WHERE id=%s FOR UPDATE", [sid])
+            expired += run("""UPDATE waitlist SET status='expired' WHERE schedule_id=%s
+                               AND status='offered' AND offer_expires_at <= clock_timestamp()""",
+                           [sid]).rowcount
+            while run("SELECT fn_offer_next_waitlist(%s) AS wl", [sid]).rows[0]["wl"]:
+                reoffered += 1
+    return {"expired": expired, "reoffered": reoffered}
 
 
 def tick(ignore_window=False):
     """跑一轮完整流程。"""
     from mailer import flush
+    from init_db import ensure_schedules
 
+    ensure_schedules()
     remind = scan_reminders(ignore_window=ignore_window)
     expire = expire_offers()
     mail = flush()
