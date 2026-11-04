@@ -330,6 +330,8 @@ def map_schedule(r):
         "weekday": r["weekday"],
         "period": r["time_slot"],
         "closed": bool(r["closed"]),
+        # 当天已停止挂号（半天结束前 30 分钟起）：前端显示「已停挂」，不能再选
+        "ended": bool(r.get("ended")),
         "room": r.get("room") or "",
         "quotaTotal": total,
         "quotaBooked": booked,

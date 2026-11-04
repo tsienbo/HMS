@@ -985,3 +985,6 @@ body .topbar .login-info .btn.staff-on .ic { margin: 0; }
   body .topbar .login-info .btn, body .topbar .login-info .lang-sel { height: 34px; min-height: 34px; font-size: 13px; padding: 0 10px; }
   body .topbar .login-info .lang-sel { padding-right: 26px; background-position: right 8px center; background-size: 12px; max-width: 7.5em; }
 }
+
+/* 「怎么走」是从预约凭证弹窗里打开的，要盖在凭证上面（两个弹窗原来同一层，后写的凭证会挡住它） */
+#routeMask { z-index: 55; }

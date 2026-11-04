@@ -620,7 +620,8 @@ def doctor_schedules(doctor_id):
         days = max(1, min(days or 7, 30))
 
         r = query(
-            """SELECT * FROM schedules
+            """SELECT *, (work_date + end_time - INTERVAL '30 minutes' <= (NOW() AT TIME ZONE 'Asia/Shanghai')) AS ended
+                 FROM schedules
                 WHERE doctor_id = %s
                   AND work_date >= CURRENT_DATE
                   AND work_date < CURRENT_DATE + %s::int
@@ -651,7 +652,8 @@ def schedules():
             cond.append("dept_id = %s")
 
         r = query(
-            """SELECT * FROM schedules
+            """SELECT *, (work_date + end_time - INTERVAL '30 minutes' <= (NOW() AT TIME ZONE 'Asia/Shanghai')) AS ended
+                 FROM schedules
                 WHERE %s
                 ORDER BY work_date, doctor_id, time_slot
                 LIMIT 400""" % " AND ".join(cond),

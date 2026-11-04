@@ -334,8 +334,9 @@ BEGIN
     RAISE EXCEPTION '该科室仅接诊%患者', CASE v_limit WHEN 'F' THEN '女性' ELSE '男性' END;
   END IF;
 
-  IF sc.work_date < CURRENT_DATE THEN
-    RAISE EXCEPTION '不能候补已过去的日期';
+  IF sc.work_date < CURRENT_DATE
+     OR sc.work_date + sc.end_time - INTERVAL '30 minutes' <= (NOW() AT TIME ZONE 'Asia/Shanghai') THEN
+    RAISE EXCEPTION '该时段已停止挂号，不能再排候补';
   END IF;
 
   -- 还有（没被候补预留的）号就直接挂，不该排队 —— 否则候补队列会变成「慢一点再挂号」的通道
@@ -417,7 +418,8 @@ DECLARE
   v_when TEXT;
 BEGIN
   SELECT * INTO sc FROM schedules WHERE id = p_schedule;
-  IF NOT FOUND OR sc.closed OR sc.work_date < CURRENT_DATE THEN
+  IF NOT FOUND OR sc.closed OR sc.work_date < CURRENT_DATE
+     OR sc.work_date + sc.end_time - INTERVAL '30 minutes' <= (NOW() AT TIME ZONE 'Asia/Shanghai') THEN
     RETURN NULL;
   END IF;
   -- 没被占用、也没给别的候补留着的号才能再通知一位
@@ -583,6 +585,11 @@ BEGIN
 
   IF sc.work_date < CURRENT_DATE THEN
     RAISE EXCEPTION '不能预约已过去的日期';
+  END IF;
+
+  -- 当天的半天：结束前 30 分钟停止挂号（上午 11:30、下午 16:30），按北京时间比较
+  IF sc.work_date + sc.end_time - INTERVAL '30 minutes' <= (NOW() AT TIME ZONE 'Asia/Shanghai') THEN
+    RAISE EXCEPTION '该时段已停止挂号（当天上午 11:30、下午 16:30 截止）';
   END IF;
 
   IF sc.booked_count >= sc.max_quota THEN
@@ -979,3 +986,33 @@ BEGIN
     ALTER TABLE doctors ADD CONSTRAINT ck_doctor_fee_rule CHECK (fee = public.fn_doctor_fee(title, dept_id));
   END IF;
 END $$;
+
+-- ============================================================
+-- 15. 当天停止挂号：半天结束前 30 分钟（上午 11:30、下午 16:30）
+-- ============================================================
+-- 以前只判断「日期不早于今天」，下午还能挂到当天上午的号。挂号、候补触发器和补位函数里
+-- 都加了同一个判断；可挂号源视图也不再列出已停挂的半天。
+CREATE OR REPLACE VIEW v_available_schedules AS
+SELECT s.id                          AS schedule_id,
+       d.id                          AS dept_id,
+       d.name                        AS dept_name,
+       doc.id                        AS doctor_id,
+       doc.name                      AS doctor_name,
+       doc.title                     AS doctor_title,
+       doc.fee,
+       s.work_date,
+       s.weekday,
+       s.time_slot,
+       s.start_time,
+       s.end_time,
+       s.max_quota,
+       s.booked_count,
+       (s.max_quota - s.booked_count) AS remain
+  FROM schedules s
+  JOIN doctors     doc ON doc.id = s.doctor_id
+  JOIN departments d   ON d.id   = s.dept_id
+ WHERE s.closed = FALSE
+   AND doc.is_active = TRUE
+   AND s.work_date >= CURRENT_DATE
+   AND NOT (s.work_date + s.end_time - INTERVAL '30 minutes' <= (NOW() AT TIME ZONE 'Asia/Shanghai'))
+   AND s.max_quota - s.booked_count > 0;

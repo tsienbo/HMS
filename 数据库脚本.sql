@@ -15,7 +15,7 @@
 --  ★ 本脚本会删除并重建全部表，对已有挂号数据的库执行会清空数据。
 --    已在使用的库升级请运行 .venv\Scripts\python.exe server\app.py --init（只补缺少的对象）。
 --
---  本文件由 tools/build_db_script.py 按运行库的实际结构生成（2026-11-03），请勿手工修改。
+--  本文件由 tools/build_db_script.py 按运行库的实际结构生成（2026-11-04），请勿手工修改。
 --
 --  脚本结构
 --    第 0 部分  建库并连接
@@ -203,11 +203,11 @@ $function$;
 
 -- departments：科室
 CREATE TABLE departments (
-  id           VARCHAR(8) NOT NULL,   -- 科室编号 D01…D05
+  id           VARCHAR(8) NOT NULL,   -- 科室编号 D01…D13
   name         VARCHAR(50) NOT NULL,   -- 科室名（唯一）
   description  VARCHAR(200) NOT NULL,   -- 简介
   location     VARCHAR(120),   -- (新增) 楼层/区域位置，如“门诊楼 2 层东区”
-  sex_limit    CHAR(1),
+  sex_limit    CHAR(1),   -- 性别限制：NULL 不限，F 只接诊女性（妇产科），M 只接诊男性（男科）
   created_at   TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at   TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   -- 科室编号唯一，如 D01
@@ -723,7 +723,7 @@ SELECT s.id AS schedule_id,
    FROM schedules s
      JOIN doctors doc ON doc.id::text = s.doctor_id::text
      JOIN departments d ON d.id::text = s.dept_id::text
-  WHERE s.closed = false AND doc.is_active = true AND s.work_date >= CURRENT_DATE AND (s.max_quota - s.booked_count) > 0;
+  WHERE s.closed = false AND doc.is_active = true AND s.work_date >= CURRENT_DATE AND NOT (s.work_date + s.end_time - '00:30:00'::interval) <= (now() AT TIME ZONE 'Asia/Shanghai'::text) AND (s.max_quota - s.booked_count) > 0;
 
 CREATE VIEW v_doctor_workload AS
 SELECT doc.id AS doctor_id,
@@ -870,6 +870,11 @@ BEGIN
 
   IF sc.work_date < CURRENT_DATE THEN
     RAISE EXCEPTION '不能预约已过去的日期';
+  END IF;
+
+  -- 当天的半天：结束前 30 分钟停止挂号（上午 11:30、下午 16:30），按北京时间比较
+  IF sc.work_date + sc.end_time - INTERVAL '30 minutes' <= (NOW() AT TIME ZONE 'Asia/Shanghai') THEN
+    RAISE EXCEPTION '该时段已停止挂号（当天上午 11:30、下午 16:30 截止）';
   END IF;
 
   IF sc.booked_count >= sc.max_quota THEN
@@ -1097,7 +1102,8 @@ DECLARE
   v_when TEXT;
 BEGIN
   SELECT * INTO sc FROM schedules WHERE id = p_schedule;
-  IF NOT FOUND OR sc.closed OR sc.work_date < CURRENT_DATE THEN
+  IF NOT FOUND OR sc.closed OR sc.work_date < CURRENT_DATE
+     OR sc.work_date + sc.end_time - INTERVAL '30 minutes' <= (NOW() AT TIME ZONE 'Asia/Shanghai') THEN
     RETURN NULL;
   END IF;
   -- 没被占用、也没给别的候补留着的号才能再通知一位
@@ -1312,8 +1318,9 @@ BEGIN
     RAISE EXCEPTION '该科室仅接诊%患者', CASE v_limit WHEN 'F' THEN '女性' ELSE '男性' END;
   END IF;
 
-  IF sc.work_date < CURRENT_DATE THEN
-    RAISE EXCEPTION '不能候补已过去的日期';
+  IF sc.work_date < CURRENT_DATE
+     OR sc.work_date + sc.end_time - INTERVAL '30 minutes' <= (NOW() AT TIME ZONE 'Asia/Shanghai') THEN
+    RAISE EXCEPTION '该时段已停止挂号，不能再排候补';
   END IF;
 
   -- 还有（没被候补预留的）号就直接挂，不该排队 —— 否则候补队列会变成「慢一点再挂号」的通道
@@ -1465,7 +1472,7 @@ INSERT INTO doctors (id, dept_id, name, title, fee) VALUES
 
 -- 后台账号：初始口令见 server/seed_data.py（存的是 scrypt 散列，明文不入库），正式使用前请修改。
 INSERT INTO users (id, username, password_hash, display_name, role, status) VALUES
-  ('U01', 'admin', 'scrypt$6679a083e2f397f8f694ded7d344983f$ef1cab33d30d9c992a189ebc75690d14326bc3756270d8dc1dbe9b79b029bf48a0294c2330f666bd27e08e7862a7471f62b36ec8b0349642c5f235600bcf408b', '系统管理员', 'admin', 'active');
+  ('U01', 'admin', 'scrypt$e6d07f9a828c11f162e456b3ed6ec7bb$d16a2a939f8824f03da4c03b96133f53262925122e33e78291eb0adfe28fda24d8bf98f2004ac719aff2f4d442bf8923adc48e7d8676d2ce1b433634e4eb05e5', '系统管理员', 'admin', 'active');
 
 -- 排班：从今天起 14 天 × 每位医生 × 上午 / 下午；号源按职称分档，诊室号按医生编号推导（DR01 → 诊室 01）
 INSERT INTO schedules (id, doctor_id, dept_id, work_date, weekday, time_slot, start_time, end_time, room, max_quota)

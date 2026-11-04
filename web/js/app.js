@@ -1553,7 +1553,7 @@ function renderDoctorList() {
 }
 function scheduleStatus(doctorId) {
   var list = allSchedules[doctorId] || [], totalRemain = 0;
-  for (var i = 0; i < list.length; i++) { if (!list[i].closed) totalRemain += list[i].remain; }
+  for (var i = 0; i < list.length; i++) { if (!list[i].closed && !list[i].ended) totalRemain += list[i].remain; }
   if (totalRemain > 5) return { text: t('st_avail'), cls: 'green', remain: totalRemain };
   if (totalRemain > 0) return { text: t('st_tight'), cls: 'orange', remain: totalRemain };
   return { text: t('st_full'), cls: 'grey', remain: 0 };
@@ -1580,7 +1580,7 @@ function renderSchedulePanel() {
   html += '<div class="dates scroll">';
   for (var i = 0; i < days.length; i++) {
     var ds = days[i].date, has = false;
-    for (var j = 0; j < list.length; j++) { if (list[j].date === ds && !list[j].closed && list[j].remain > 0) { has = true; break; } }
+    for (var j = 0; j < list.length; j++) { if (list[j].date === ds && !list[j].closed && !list[j].ended && list[j].remain > 0) { has = true; break; } }
     var on = (bookingState.date === ds) ? ' on' : '';
     var off = has ? '' : ' off';
     html += `<button class="date${on}${off}" onclick="selectDate('${ds}')">${ds.slice(5)}<span>${days[i].weekday}</span></button>`;
@@ -1591,6 +1591,13 @@ function renderSchedulePanel() {
     for (var i = 0; i < list.length; i++) {
       var s = list[i];
       if (s.date !== bookingState.date || s.closed) continue;
+      /* 当天已停止挂号的半天：灰掉、不能选、也不能排候补 */
+      if (s.ended) {
+        html += '<div class="card disabled" title="' + escapeHtml(t('slot_ended_tip')) + '">';
+        html += '<div class="card-title">' + escapeHtml(trPeriod(s.period)) + ' <span class="badge grey">' + t('st_ended') + '</span></div>';
+        html += '<div class="tip">' + escapeHtml(t('slot_ended_tip')) + '</div></div>';
+        continue;
+      }
       var st = s.remain > 5 ? 'green' : s.remain > 0 ? 'orange' : 'grey';
       var stText = s.remain > 5 ? t('st_avail') : s.remain > 0 ? t('st_tight') : t('st_full');
       var on = (bookingState.scheduleId === s.id) ? ' style="border-color:#1f5e55;background:#eaf2ee"' : '';
@@ -1613,6 +1620,7 @@ function selectDate(dateStr) {
 function selectPeriod(scheduleId) {
   var list = allSchedules[bookingState.doctorId] || [], s = null;
   for (var i = 0; i < list.length; i++) { if (list[i].id === scheduleId) { s = list[i]; break; } }
+  if (s && s.ended) { alert(t('slot_ended_tip')); return; }
   if (!s || s.remain <= 0) { alert(t('slot_full_alert')); return; }
   bookingState.scheduleId = scheduleId;
   bookingState.period = s.period;
@@ -1778,7 +1786,8 @@ function voucherDetailHtml(apt, patientName) {
 }
 /* 凭证上的操作：日历、路线，待就诊的还能改约、取消 */
 function voucherActionsHtml(apt) {
-  var html = '<button class="btn" onclick="addToCalendar()">' + icon('calendar') + escapeHtml(t('add_cal')) + '</button>';
+  /* 自助机上不提供「添加到日历」：下载的日历文件会留在公共电脑上 */
+  var html = isKiosk() ? '' : '<button class="btn" onclick="addToCalendar()">' + icon('calendar') + escapeHtml(t('add_cal')) + '</button>';
   html += '<button class="btn" onclick="viewRoute()">' + icon('route') + escapeHtml(t('route')) + '</button>';
   if (apt.status === 'booked') {
     html += '<button class="btn" onclick="rescheduleAppt(\'' + apt.id + '\',\'' + apt.deptId + '\')">' + t('edit_appt') + '</button>';
@@ -1858,14 +1867,68 @@ function cancelVoucherAppt() {
     showPage('mine');
   }).catch(function (e) { alert(e.message); });
 }
+/* ---------- 添加到日历 ----------
+ * 生成标准 iCalendar（.ics）文件：电脑上用 Outlook / Windows 日历 / Mac 日历打开就能添加，
+ * iPhone 的 Safari 会直接弹出「添加到日历」，安卓手机用系统日历或 Google 日历打开。
+ * 日程是这个半天的出诊时间，带两个提醒：前一天、开诊前 1 小时。
+ * 自助机上不显示这个按钮（文件会留在公共电脑上）。 */
+function icsText(s) {
+  return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+}
+function icsFold(line) {
+  /* RFC 5545：每行不超过 75 个字节，超出的折到下一行、行首加一个空格（中文一个字 3 个字节） */
+  var out = '', cur = '', bytes = 0, enc = new TextEncoder();
+  for (var ch of line) {
+    var b = enc.encode(ch).length;
+    if (bytes + b > 74) { out += cur + '\r\n '; cur = ''; bytes = 1; }
+    cur += ch; bytes += b;
+  }
+  return out + cur;
+}
+function icsTime(date, hhmm) {
+  /* 北京时间换成 UTC（中国不实行夏令时，固定减 8 小时），写成 20261105T053000Z */
+  var d = date.split('-').map(Number), h = hhmm.split(':').map(Number);
+  return new Date(Date.UTC(d[0], d[1] - 1, d[2], h[0] - 8, h[1])).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
 function addToCalendar() {
   var apt = voucherApt;
-  if (!apt) return;
+  if (!apt || !apt.date) return;
   var dept = aptDept(apt), doc = aptDoctor(apt);
-  var text = (apt.date || '') + ' ' + trPeriod(apt.period) + ' · ' + (dept ? trDeptName(dept) : (apt.deptName || '')) + ' · ' + (doc ? trDoctorName(doc) : (apt.doctorName || ''))
-    + '\n' + t('f_arrive') + ': ' + suggestArrival(apt.period)
-    + '\n' + t('f_place') + ': ' + (dept ? trLocation(dept.location || '') : '') + ' · ' + trRoom(apt.room);
-  alert(t('cal_copied') + '\n' + text);
+  var am = apt.period === '上午';
+  var deptName = dept ? trDeptName(dept) : (apt.deptName || '');
+  var docName = doc ? trDoctorName(doc) + ' ' + trTitle(doc.title) : (apt.doctorName || '');
+  var place = t('hospital_sub') + ' ' + (dept ? trLocation(dept.location || '') : trLocation(apt.location || '')) + ' · ' + trRoom(apt.room);
+  var no = apt.appointmentNo || apt.id || '';
+  var desc = [t('f_arrive') + colon() + suggestArrival(apt.period),
+              t('f_apt_no') + colon() + no + ' · ' + t('seq') + ' ' + (apt.seqNo || '-'),
+              t('f_fee') + colon() + fmtMoney(apt.fee || 0),
+              t('f_patient') + colon() + (apt.patientName || '')].join('\n');
+  var lines = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//HMS//Hospital Booking//ZH', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    'UID:' + no + '@hms',
+    'DTSTAMP:' + new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''),
+    'DTSTART:' + icsTime(apt.date, am ? '08:00' : '13:30'),
+    'DTEND:' + icsTime(apt.date, am ? '12:00' : '17:00'),
+    'SUMMARY:' + icsText(t('cal_title') + colon() + deptName + ' · ' + docName),
+    'LOCATION:' + icsText(place),
+    'DESCRIPTION:' + icsText(desc),
+    'BEGIN:VALARM', 'ACTION:DISPLAY', 'TRIGGER:-P1D', 'DESCRIPTION:' + icsText(t('cal_title') + ' ' + deptName), 'END:VALARM',
+    'BEGIN:VALARM', 'ACTION:DISPLAY', 'TRIGGER:-PT1H', 'DESCRIPTION:' + icsText(t('cal_title') + ' ' + deptName), 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR'];
+  var ics = lines.map(icsFold).join('\r\n') + '\r\n';
+  var name = 'appointment-' + no + '.ics';
+  /* iPhone / iPad：用 data: 地址打开，Safari 会直接弹出「添加到日历」；其他设备下载 .ics 文件 */
+  if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+    location.href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
+  } else {
+    var url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+    alert(t('cal_done'));
+  }
 }
 /* ---------- 怎么走 ----------
  * 不跳外部地图：按科室位置（如「门诊楼 2 层东区」）画一张楼层示意图（电梯 → 目标区域的箭头），
@@ -3414,7 +3477,7 @@ async function proxyDeptChange() {
   let n = 0;
   for (let i = 0; i < proxySchedules.length; i++) {
     const s = proxySchedules[i];
-    if (!keep[s.date] || s.closed || s.remain <= 0) continue;
+    if (!keep[s.date] || s.closed || s.ended || s.remain <= 0) continue;
     opts += '<option value="' + s.id + '">'
       + s.date + ' ' + s.period + ' · ' + doctorName(s.doctorId)
       + '（余 ' + s.remain + '）</option>';

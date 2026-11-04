@@ -92,6 +92,8 @@ const I18N = {
   no_doctor: ["该科室暂无出诊医生。", "No doctors available in this department.", "この診療科には現在医師がいません。", "이 진료과에는 진료 중인 의사가 없습니다.", "В этом отделении сейчас нет врачей.", "No hay médicos disponibles en este departamento.", "Aucun médecin disponible dans ce service.", "แผนกนี้ยังไม่มีแพทย์ออกตรวจ", "Khoa này hiện chưa có bác sĩ."],
   st_avail: ["有号", "Available", "空きあり", "예약 가능", "Есть места", "Disponible", "Disponible", "ว่าง", "Còn chỗ"],
   st_tight: ["紧张", "Few left", "残りわずか", "얼마 안 남음", "Мало мест", "Quedan pocas", "Peu de places", "เหลือน้อย", "Sắp hết"],
+  st_ended: ["已停挂", "Closed", "受付終了", "접수 마감", "Запись закрыта", "Cerrado", "Clos", "ปิดรับแล้ว", "Đã đóng"],
+  slot_ended_tip: ["当天上午 11:30、下午 16:30 停止挂号，请选择其他时段", "Same-day booking closes at 11:30 for morning and 16:30 for afternoon sessions. Please choose another time.", "当日の受付は午前 11:30、午後 16:30 までです。別の時間帯を選んでください。", "당일 접수는 오전 11:30, 오후 16:30에 마감됩니다. 다른 시간대를 선택하세요.", "Запись на текущий день закрывается в 11:30 (утро) и 16:30 (день). Выберите другое время.", "La cita del mismo día cierra a las 11:30 (mañana) y 16:30 (tarde). Elija otro horario.", "Les rendez-vous du jour ferment à 11 h 30 (matin) et 16 h 30 (après-midi). Choisissez un autre créneau.", "การจองวันเดียวกันปิดเวลา 11:30 น. (เช้า) และ 16:30 น. (บ่าย) กรุณาเลือกช่วงเวลาอื่น", "Đặt lịch trong ngày đóng lúc 11:30 (sáng) và 16:30 (chiều). Vui lòng chọn khung giờ khác."],
   st_full: ["已满", "Full", "満員", "마감", "Мест нет", "Completo", "Complet", "เต็ม", "Hết chỗ"],
   view_slots: ["查看号源", "See times", "空き時間を見る", "시간 보기", "Время приёма", "Ver horarios", "Voir les créneaux", "ดูเวลา", "Xem giờ khám"],
   other_slots: ["查看其他时段", "Other times", "他の時間帯", "다른 시간", "Другое время", "Otros horarios", "Autres créneaux", "เวลาอื่น", "Khung giờ khác"],
@@ -178,7 +180,8 @@ const I18N = {
   bring_docs: ["请携带证件原件（护照 / 身份证）、医保卡（如有）、既往病历资料。", "Please bring your original ID or passport, insurance card (if any) and previous medical records.", "身分証またはパスポートの原本、保険証（あれば）、過去の診療記録をお持ちください。", "신분증 또는 여권 원본, 보험증(있는 경우), 이전 진료 기록을 지참하세요.", "Возьмите оригинал паспорта, страховой полис (если есть) и медицинские документы.", "Traiga su pasaporte o documento original, tarjeta de seguro (si tiene) e historial médico.", "Apportez votre passeport ou pièce d'identité, votre carte d'assurance (le cas échéant) et votre dossier médical.", "กรุณานำหนังสือเดินทางหรือบัตรประจำตัวฉบับจริง บัตรประกัน (ถ้ามี) และประวัติการรักษามาด้วย", "Vui lòng mang hộ chiếu/giấy tờ bản gốc, thẻ bảo hiểm (nếu có) và hồ sơ bệnh án."],
   confirm_cancel: ["确定取消这张挂号单？", "Cancel this appointment?", "この予約をキャンセルしますか？", "이 예약을 취소할까요?", "Отменить эту запись?", "¿Cancelar esta cita?", "Annuler ce rendez-vous ?", "ยกเลิกนัดนี้หรือไม่?", "Hủy lịch hẹn này?"],
   cancelled_ok: ["已取消", "Cancelled", "キャンセルしました", "취소되었습니다", "Запись отменена", "Cancelada", "Annulé", "ยกเลิกแล้ว", "Đã hủy"],
-  cal_copied: ["已生成日历提醒（模拟）：", "Calendar reminder created (demo):", "カレンダーの予定を作成しました（デモ）：", "캘린더 알림을 만들었습니다(데모):", "Напоминание создано (демо):", "Recordatorio creado (demo):", "Rappel créé (démo) :", "สร้างการแจ้งเตือนแล้ว (สาธิต):", "Đã tạo nhắc lịch (mô phỏng):"],
+  cal_done: ["已下载日历文件（.ics）。打开它即可添加到手机或电脑日历，会在前一天和开诊前 1 小时提醒你。", "A calendar file (.ics) has been downloaded. Open it to add the visit to your phone or computer calendar, with reminders the day before and 1 hour before.", "カレンダーファイル（.ics）をダウンロードしました。開くとスマホやパソコンのカレンダーに追加され、前日と診察開始1時間前に通知されます。", "캘린더 파일(.ics)을 내려받았습니다. 열면 휴대폰이나 컴퓨터 캘린더에 추가되며, 전날과 진료 시작 1시간 전에 알려 드립니다.", "Файл календаря (.ics) загружен. Откройте его, чтобы добавить приём в календарь телефона или компьютера; напоминания — за день и за час до начала.", "Se ha descargado un archivo de calendario (.ics). Ábralo para añadir la cita al calendario del móvil u ordenador, con avisos el día anterior y 1 hora antes.", "Un fichier de calendrier (.ics) a été téléchargé. Ouvrez-le pour ajouter le rendez-vous au calendrier de votre téléphone ou ordinateur, avec des rappels la veille et 1 heure avant.", "ดาวน์โหลดไฟล์ปฏิทิน (.ics) แล้ว เปิดไฟล์เพื่อเพิ่มลงปฏิทินในโทรศัพท์หรือคอมพิวเตอร์ ระบบจะเตือนล่วงหน้า 1 วันและ 1 ชั่วโมงก่อนเปิดตรวจ", "Đã tải tệp lịch (.ics). Mở tệp để thêm lịch khám vào lịch điện thoại hoặc máy tính, có nhắc trước 1 ngày và trước giờ khám 1 tiếng."],
+  cal_title: ["门诊就诊", "Hospital visit", "外来受診", "외래 진료", "Приём врача", "Consulta médica", "Consultation", "นัดพบแพทย์", "Lịch khám bệnh"],
 
   /* ---------- 个人中心 ---------- */
   center_h: ["个人中心", "My account", "マイページ", "마이페이지", "Мой кабинет", "Mi cuenta", "Mon compte", "บัญชีของฉัน", "Tài khoản"],
@@ -327,6 +330,7 @@ const I18N = {
 
 /* 服务端报错是中文：按原文里的关键字认出是哪一种，换成当前语言。认不出来就原样显示 */
 const SERVER_ERRORS = [
+  ['已停止挂号', 'slot_ended_tip'],
   ['手机号格式不正确', 'v_phone_bad'],
   ['已登记的性别不一致', 'e_sex_mismatch'],
   ['仅接诊女性', 'e_only_f'],
