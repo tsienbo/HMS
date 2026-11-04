@@ -988,3 +988,12 @@ body .topbar .login-info .btn.staff-on .ic { margin: 0; }
 
 /* 「怎么走」是从预约凭证弹窗里打开的，要盖在凭证上面（两个弹窗原来同一层，后写的凭证会挡住它） */
 #routeMask { z-index: 55; }
+
+/* 窄弹窗（最宽 420px，如加入候补、实名校验）：不管屏幕多宽，标签都放在输入框上方。
+ * 以前只在手机宽度才这样排，电脑上弹窗里「8 个字宽的标签 + 区号 + 手机号」挤在一行，
+ * 大字版时手机号输入框被挤出弹窗右边。宽弹窗（.wide）仍然左右排。 */
+.modal:not(.wide) p { flex-wrap: wrap; gap: 4px 8px; }
+.modal:not(.wide) p > label { width: 100%; text-align: left; }
+.modal:not(.wide) p > select, .modal:not(.wide) p > input,
+.modal:not(.wide) p > .ss-wrap, .modal:not(.wide) .phone-row { flex: 1 1 100%; }
+.modal:not(.wide) .phone-row select, .modal:not(.wide) .phone-row .ss-wrap { width: 8.5em; }
