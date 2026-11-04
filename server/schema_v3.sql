@@ -417,7 +417,8 @@ DECLARE
   p   patients%ROWTYPE;
   v_when TEXT;
 BEGIN
-  SELECT * INTO sc FROM schedules WHERE id = p_schedule;
+  -- 容量检查和预留写入共享排班锁；仅锁候补行无法防止重复预留同一个名额。
+  SELECT * INTO sc FROM schedules WHERE id = p_schedule FOR UPDATE;
   IF NOT FOUND OR sc.closed OR sc.work_date < CURRENT_DATE
      OR sc.work_date + sc.end_time - INTERVAL '30 minutes' <= (NOW() AT TIME ZONE 'Asia/Shanghai') THEN
     RETURN NULL;
@@ -1016,3 +1017,31 @@ SELECT s.id                          AS schedule_id,
    AND s.work_date >= CURRENT_DATE
    AND NOT (s.work_date + s.end_time - INTERVAL '30 minutes' <= (NOW() AT TIME ZONE 'Asia/Shanghai'))
    AND s.max_quota - s.booked_count > 0;
+
+-- 16. 调额保护：已有库通过 --init / --migrate 更新此函数。
+CREATE OR REPLACE FUNCTION fn_schedule_before_update() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.max_quota < OLD.booked_count THEN
+    RAISE EXCEPTION '号源总数不能小于已预约数（当前已约 % 个）', OLD.booked_count;
+  END IF;
+
+  -- 只有调低容量时检查预留；挂号计数更新与候补转正发生在同一事务。
+  IF NEW.max_quota < OLD.max_quota AND NEW.max_quota < OLD.booked_count +
+     (SELECT COUNT(*) FROM waitlist WHERE schedule_id=OLD.id AND status='offered'
+        AND offer_expires_at > clock_timestamp()) THEN
+    RAISE EXCEPTION '号源总数不能小于已预约数与有效候补预留数之和';
+  END IF;
+
+  IF (NEW.work_date <> OLD.work_date
+      OR NEW.time_slot <> OLD.time_slot
+      OR NEW.doctor_id <> OLD.doctor_id)
+     AND EXISTS (SELECT 1 FROM appointments a
+                  WHERE a.schedule_id = OLD.id
+                    AND a.status IN ('booked','completed')) THEN
+    RAISE EXCEPTION '该排班已有预约，不能修改日期、时段或医生；请先停诊退号';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;

@@ -30,6 +30,7 @@
   触发器完成，应用层只管 INSERT / UPDATE 状态。详见 create_appointment()。
 """
 
+import argparse
 import hashlib
 import ipaddress
 import os
@@ -43,6 +44,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from werkzeug.exceptions import HTTPException
 
 import guard
+from business_time import today
 from db import (
     as_date_str, as_float, as_iso, db_error, health_check, map_appointment,
     map_department, map_doctor, map_schedule, mask_id_card_str, mask_phone_str,
@@ -1182,7 +1184,7 @@ def cancel_appointment(apt_id):
         work_date = apt["work_date"]
         if isinstance(work_date, datetime):
             work_date = work_date.date()
-        if work_date < date.today():
+        if work_date < today():
             return jsonify(error="就诊日期已过，无法取消"), 409
 
         # WHERE 里再带一次 status = 'booked'：万一这中间有别人先退了，
@@ -1405,27 +1407,22 @@ def update_quota(sid):
             return jsonify(error="号源总数必须为正整数"), 400
         total = int(total)
 
-        upd = query(
-            "UPDATE schedules SET max_quota = %s "
-            "WHERE id = %s AND booked_count <= %s RETURNING *",
-            [total, sid, total],
-            operator=user["username"],
-        )
-        if upd.rowcount == 0:
-            cur = query("SELECT booked_count FROM schedules WHERE id = %s", [sid])
-            if cur.rowcount == 0:
+        with transaction(operator=user["username"]) as run:
+            cur = run("SELECT * FROM schedules WHERE id = %s FOR UPDATE", [sid])
+            if not cur.rowcount:
                 return jsonify(error="排班不存在"), 404
-            return jsonify(error="号源总数不能小于已预约数（%d）"
-                           % cur.rows[0]["booked_count"]), 409
-
-        # 加出来的号先按顺序补给正在排队的候补（每补一位就给他保留 2 小时），
-        # 补到没人排队或号又用完为止 —— 不然排队的人反而被后来直接挂号的人抢先
-        offered = 0
-        for _ in range(total):
-            r = query("SELECT fn_offer_next_waitlist(%s) AS w", [sid])
-            if not r.rows[0]["w"]:
-                break
-            offered += 1
+            held = run("""SELECT COUNT(*) AS n FROM waitlist WHERE schedule_id = %s
+                           AND status = 'offered' AND offer_expires_at > clock_timestamp()""",
+                       [sid]).rows[0]["n"]
+            if total < cur.rows[0]["booked_count"] + held:
+                return jsonify(error="号源总数不能小于已预约数与有效候补预留数之和"), 409
+            upd = run("UPDATE schedules SET max_quota = %s WHERE id = %s RETURNING *", [total, sid])
+            offered = 0
+            for _ in range(total):
+                r = run("SELECT fn_offer_next_waitlist(%s) AS w", [sid])
+                if not r.rows[0]["w"]:
+                    break
+                offered += 1
         out = map_schedule(upd.rows[0])
         out["offeredWaitlist"] = offered
         return jsonify(out)
@@ -1450,28 +1447,25 @@ def toggle_schedule(sid):
         if err:
             return err
 
-        sc_res = query("SELECT * FROM schedules WHERE id = %s", [sid])
-        if sc_res.rowcount == 0:
-            return jsonify(error="排班不存在"), 404
-
-        will_close = not sc_res.rows[0]["closed"]
-        affected = 0
-
-        if will_close:
-            upd = query(
-                """UPDATE appointments
+        with transaction(operator=user["username"]) as run:
+            sc_res = run("SELECT * FROM schedules WHERE id = %s FOR UPDATE", [sid])
+            if sc_res.rowcount == 0:
+                return jsonify(error="排班不存在"), 404
+            will_close = not sc_res.rows[0]["closed"]
+            affected = 0
+            # 先关闭排班，持锁直至退号一并提交；新挂号只能等待并读到 closed。
+            run("UPDATE schedules SET closed = %s WHERE id = %s", [will_close, sid])
+            if will_close:
+                upd = run(
+                    """UPDATE appointments
                       SET status = 'cancelled',
                           cancel_reason = 'closure',
                           close_note = '医生停诊，系统自动退号'
                     WHERE schedule_id = %s AND status = 'booked'
                     RETURNING id""",
-                [sid],
-                operator=user["username"],
-            )
-            affected = upd.rowcount
-
-        query("UPDATE schedules SET closed = %s WHERE id = %s",
-              [will_close, sid], operator=user["username"])
+                    [sid],
+                )
+                affected = upd.rowcount
         return jsonify(ok=True, closed=will_close, affected=affected)
     except Exception as err:                                  # noqa: BLE001
         app.logger.error("[停诊] %s", err)
@@ -1752,14 +1746,23 @@ def cancel_waitlist(wl_id):
         ids = request_patient_ids()
         if not ids:
             return patient_auth_error()
-        upd = query(
-            """UPDATE waitlist SET status = 'cancelled'
+        with transaction() as run:
+            # 和补位/挂号一致，先锁排班，再更新候补行。
+            slot = run("""SELECT s.id FROM schedules s JOIN waitlist w ON w.schedule_id=s.id
+                          WHERE w.id=%s AND w.patient_id=ANY(%s) FOR UPDATE OF s""",
+                       [wl_id, list(ids)])
+            if not slot.rowcount:
+                return jsonify(error="该候补已失效，无需取消"), 409
+            upd = run(
+                """UPDATE waitlist SET status = 'cancelled'
                 WHERE id = %s AND status IN ('waiting','offered')
                   AND patient_id = ANY(%s)""",
-            [wl_id, list(ids)],
-        )
-        if upd.rowcount == 0:
-            return jsonify(error="该候补已失效，无需取消"), 409
+                [wl_id, list(ids)],
+            )
+            if upd.rowcount == 0:
+                return jsonify(error="该候补已失效，无需取消"), 409
+            while run("SELECT fn_offer_next_waitlist(%s) AS w", [slot.rows[0]["id"]]).rows[0]["w"]:
+                pass
         return jsonify(ok=True)
     except Exception as err:                                  # noqa: BLE001
         app.logger.error("[取消候补] %s", err)
@@ -2002,7 +2005,7 @@ def map_patient_admin(r, reveal=False):
         "idType": r["id_type"],
         "nationality": r["nationality"] or "",
         "idCard": r["id_card"] if reveal else mask_id_card_str(r["id_card"]),
-        "docKey": r["doc_key"],
+        "docKey": r["doc_key"] if reveal else None,
         "phoneCc": r["phone_cc"],
         "phone": r["phone"] if reveal else mask_phone_str(r["phone"]),
         "email": (r["email"] or "") if reveal else mask_email(r["email"] or ""),
@@ -2537,6 +2540,21 @@ def _arg_value(argv, name, default=None):
 
 
 def main(argv):
+    # 先校验命令组合，避免提醒的 --force 被误用作整库重建。
+    parser = argparse.ArgumentParser()
+    commands = parser.add_mutually_exclusive_group()
+    for flag in ("--init", "--migrate", "--worker", "--remind", "--flush-mail"):
+        commands.add_argument(flag, action="store_true")
+    commands.add_argument("--set-password", nargs="?", const="admin")
+    commands.add_argument("--test-mail", nargs="?", const="")
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--interval", type=int, default=60)
+    parser.add_argument("--limit", type=int, default=50)
+    options = parser.parse_args(argv)
+    if options.force and not (options.init or options.remind or argv == ["--force"]):
+        parser.error("--force 只能与 --init / --remind 搭配，或单独用于重建数据库")
+    if options.interval < 1 or options.limit < 1:
+        parser.error("--interval 和 --limit 必须为正整数")
     # 命令行参数：
     #   什么都不带              → 启动 Web 服务
     #   --init                  → 初始化数据库（幂等，会顺带补齐 v3 对象）
@@ -2547,7 +2565,7 @@ def main(argv):
     #   --remind --force        → 只扫一次，忽略时间窗（演示用，会立刻生成提醒）
     #   --flush-mail            → 只把发件箱里到点的发出去
     #   --test-mail <地址>      → 发一封测试邮件验 SMTP 配置
-    if "--force" in argv or "--init" in argv:
+    if options.init or argv == ["--force"]:
         # 只在初始化时才导入 init_db：平时启动服务不需要它，
         # 也就不会去读 schema.sql
         from init_db import init_database

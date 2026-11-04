@@ -85,6 +85,7 @@ python server/app.py                # 启动服务
 
 > 提醒与候补顺延由 `--worker` 驱动，Web 服务本身不启动后台线程。
 > 用 `start.py` 启动时会同时拉起 worker（随服务一起停止）；单独部署 Web 服务时，worker 要另外配一个常驻进程。
+> Linux 的 Web / worker 常驻配置及数据库、邮件环境变量示例见 [deploy/README.md](deploy/README.md)。worker 也会自动补齐未来 14 天排班；业务日期和提醒窗口统一使用北京时间。
 > 管理端「通知发件箱」页签的「立即扫描一轮」按钮也可手动触发；发件箱按行原子领取，worker 与手动扫描并发也不会重复发信。
 >
 > **反向代理**：默认只认 TCP 连接的对端 IP，不相信请求头 `X-Forwarded-For`（直接暴露端口时它可以随便伪造，用来绕过限流）。
@@ -123,7 +124,7 @@ HMS/
 ├── tools/
 │   └── build_dept_keywords.py  由开源医疗知识图谱生成词典 CSV（需 pypinyin，仅更新词典时用）
 ├── start.py                一键启动脚本
-└── requirements.txt        Flask、psycopg[binary]
+└── requirements.txt        Flask、psycopg[binary]、tzdata（Windows 业务时区数据）
 ```
 
 ---

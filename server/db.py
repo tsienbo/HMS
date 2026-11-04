@@ -28,10 +28,11 @@ from psycopg.rows import dict_row
 
 # 换一台电脑只改这四行
 DB_CONFIG = {
-    "host": "127.0.0.1",
-    "port": 5432,
-    "user": "postgres",
-    "password": "123456",
+    "host": os.environ.get("HMS_DB_HOST", "127.0.0.1"),
+    "port": int(os.environ.get("HMS_DB_PORT", "5432")),
+    "user": os.environ.get("HMS_DB_USER", "postgres"),
+    "password": os.environ.get("HMS_DB_PASSWORD", "123456"),
+    "options": "-c timezone=Asia/Shanghai",
 }
 
 # 库名。平时就是 hospital_registration。

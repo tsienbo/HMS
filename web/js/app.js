@@ -349,8 +349,32 @@ function rememberHtml() {
 }
 
 /* 不记住时：清掉内存里的就诊人信息，回到首页（空闲超时、点「完成」都走这里） */
+let patientEpoch = 0;
 function forgetPatient() {
   if (rememberOn()) return;
+  patientEpoch++;
+  const tokens = allPatientTokens();
+  if (tokens) fetch('/api/patient-auth/logout', {
+    method: 'POST', headers: { 'X-Patient-Token': tokens },
+  }).catch(function () {});
+  for (const id of ['wlMask', 'patientAuthMask', 'captchaMask', 'voucherMask', 'routeMask', 'timelineMask']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.style.display = 'none';
+    for (const input of el.querySelectorAll('input, textarea')) input.value = '';
+    for (const content of el.querySelectorAll('.detail, .appt-card, .voucher, .form-error')) content.textContent = '';
+  }
+  if (patientAuthResolve) { patientAuthResolve(false); patientAuthResolve = null; }
+  if (captchaResolve) { captchaResolve(null); captchaResolve = null; }
+  voucherApt = null;
+  wlScheduleId = '';
+  myWlList = [];
+  captchaToken = '';
+  clearInterval(kioskCountdownTimer);
+  for (const id of ['voucherBody', 'timelineBody', 'routeBody', 'mineList', 'reminderList', 'profileBox', 'bookingBody']) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '';
+  }
   PATIENT_KEYS.forEach(function (k) { memStore.removeItem(k); });
   bookingState = { step: 1, deptId: '', doctorId: '', scheduleId: '', date: '', period: '', patient: null, apt: null };
   if (currentPage !== 'admin' && currentPage !== 'login') goHome();
@@ -527,6 +551,7 @@ function saveSession(s) {
  *   2. 把请求体转成 JSON
  *   3. 返回不是 2xx 就抛一个带中文提示的错误，页面 catch 到直接弹出来 */
 async function request(method, url, body, retried) {
+  const epoch = patientEpoch;
   const opt = { method: method, headers: {} };
 
   if (body) {
@@ -548,6 +573,7 @@ async function request(method, url, body, retried) {
   }
 
   const text = await res.text();
+  if (epoch !== patientEpoch) throw new Error(t('need_patient'));
   let data = null;
   if (text) {
     try {
@@ -580,6 +606,9 @@ async function request(method, url, body, retried) {
   if (data && data.patientToken && body && body.patient) {
     savePatientToken(sessKey(body.patient), data.patientToken);
   }
+  if (method !== 'GET' && /^\/(appointments|waitlist|schedules|admin\/proxy-booking)/.test(url)) {
+    allSchedules = {};
+  }
   return data;
 }
 
@@ -597,7 +626,10 @@ function loadPatientTokens() {
 
 function savePatientToken(idCard, t) {
   const all = loadPatientTokens();
-  all[String(idCard).trim().toUpperCase()] = t;
+  const key = String(idCard).trim().toUpperCase();
+  // 最近验证的患者优先发送；删除再加入，避免第 11 位永远被截掉。
+  delete all[key];
+  all[key] = t;
   try {
     pstore().setItem(PTOKEN_KEY, JSON.stringify(all));
   } catch (e) {
@@ -607,7 +639,10 @@ function savePatientToken(idCard, t) {
 
 function allPatientTokens() {
   const all = loadPatientTokens();
-  return Object.keys(all).map(function (k) { return all[k]; }).slice(0, 10).join(',');
+  const keys = Object.keys(all).reverse();
+  const current = sessKey(loadSession());
+  if (all[current]) { keys.splice(keys.indexOf(current), 1); keys.unshift(current); }
+  return keys.slice(0, 10).map(function (k) { return all[k]; }).join(',');
 }
 
 let patientAuthResolve = null;
@@ -743,6 +778,8 @@ async function apiAppointments(params) {
   if (params.keyword) q.push('keyword=' + encodeURIComponent(params.keyword));
   if (params.deptId) q.push('deptId=' + encodeURIComponent(params.deptId));
   if (params.date) q.push('date=' + encodeURIComponent(params.date));
+  if (params.status) q.push('status=' + encodeURIComponent(params.status));
+  if (params.limit) q.push('limit=' + encodeURIComponent(params.limit));
 
   let url = '/appointments';
   if (q.length > 0) url = url + '?' + q.join('&');
@@ -1291,7 +1328,8 @@ async function saveProfile() {
   tip.textContent = t('saving');
   try {
     await apiUpdatePatient(sessKey(sess), body);
-    saveSession({ name: nm.name, email: em.email });
+    saveSession(body);
+    savePatientToHistory(loadSession());
     tip.textContent = t('saved');
     setTimeout(function () { loadProfile(); }, 900);
   } catch (e) {
@@ -1514,9 +1552,9 @@ async function renderStep2(body) {
   /* 预加载该科室所有医生的号源，这样卡片上能显示真实余号 */
   var docs = doctorsOf(bookingState.deptId);
   for (var i = 0; i < docs.length; i++) {
-    if (!allSchedules[docs[i].id]) {
-      try { allSchedules[docs[i].id] = await apiDoctorSchedules(docs[i].id, 14); } catch (e) { /* 忽略单条失败 */ }
-    }
+    delete allSchedules[docs[i].id];
+    try { allSchedules[docs[i].id] = await apiDoctorSchedules(docs[i].id, 14); }
+    catch (e) { /* 忽略单条失败，不展示旧余号 */ }
   }
   renderDoctorList();
 }
@@ -1561,10 +1599,9 @@ function scheduleStatus(doctorId) {
 async function pickDoctor(doctorId) {
   bookingState.doctorId = doctorId;
   bookingState.scheduleId = '';
-  if (!allSchedules[doctorId]) {
-    try { allSchedules[doctorId] = await apiDoctorSchedules(doctorId, 14); }
-    catch (e) { alert(t('load_slots_fail') + e.message); return; }
-  }
+  delete allSchedules[doctorId];
+  try { allSchedules[doctorId] = await apiDoctorSchedules(doctorId, 14); }
+  catch (e) { alert(t('load_slots_fail') + e.message); return; }
   renderDoctorList();
 }
 function renderSchedulePanel() {
@@ -3486,6 +3523,29 @@ async function proxyDeptChange() {
   if (n === 0) opts = '<option value="">该科室未来 7 天没有可约号源</option>';
   sel.innerHTML = opts;
   remain.textContent = n > 0 ? '可选时段 ' + n + ' 个' : '';
+}
+
+let proxyBookingPending = false;
+async function bookWithCaptcha(scheduleId, patient, mode) {
+  if (mode === 'proxy' && proxyBookingPending) return { ok: false, cancelled: true };
+  if (mode === 'proxy') proxyBookingPending = true;
+  let captcha = null;
+  try {
+    while (true) {
+      try {
+        const api = mode === 'proxy' ? apiProxyBooking : apiCreateAppointment;
+        const apt = await api(scheduleId, patient, captcha ? captcha.token : '', captcha ? captcha.answer : '');
+        return { ok: true, apt: apt };
+      } catch (e) {
+        if (e.code !== 'CAPTCHA_REQUIRED') return { ok: false, message: e.message };
+        document.getElementById('captchaWhy').textContent = t('captcha_why', { n: (e.data && e.data.remain) || '…' });
+        captcha = await openCaptcha();
+        if (!captcha) return { ok: false, cancelled: true };
+      }
+    }
+  } finally {
+    if (mode === 'proxy') proxyBookingPending = false;
+  }
 }
 
 async function submitProxy() {

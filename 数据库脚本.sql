@@ -1101,7 +1101,7 @@ DECLARE
   p   patients%ROWTYPE;
   v_when TEXT;
 BEGIN
-  SELECT * INTO sc FROM schedules WHERE id = p_schedule;
+  SELECT * INTO sc FROM schedules WHERE id = p_schedule FOR UPDATE;
   IF NOT FOUND OR sc.closed OR sc.work_date < CURRENT_DATE
      OR sc.work_date + sc.end_time - INTERVAL '30 minutes' <= (NOW() AT TIME ZONE 'Asia/Shanghai') THEN
     RETURN NULL;
@@ -1183,6 +1183,12 @@ AS $function$
 BEGIN
   IF NEW.max_quota < OLD.booked_count THEN
     RAISE EXCEPTION '号源总数不能小于已预约数（当前已约 % 个）', OLD.booked_count;
+  END IF;
+
+  IF NEW.max_quota < OLD.max_quota AND NEW.max_quota < OLD.booked_count +
+     (SELECT COUNT(*) FROM waitlist WHERE schedule_id=OLD.id AND status='offered'
+        AND offer_expires_at > clock_timestamp()) THEN
+    RAISE EXCEPTION '号源总数不能小于已预约数与有效候补预留数之和';
   END IF;
 
   IF (NEW.work_date <> OLD.work_date
